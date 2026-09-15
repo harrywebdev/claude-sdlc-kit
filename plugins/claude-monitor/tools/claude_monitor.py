@@ -447,6 +447,7 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .att-row .say.open{display:block;white-space:pre-wrap}
 .att-row .say.open::before{content:"\25b4 "}
 .kpi.att b{color:var(--att)}
+.branch{font-size:12px;font-weight:560;color:var(--fg);opacity:.75;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .meta{color:var(--dim);font-size:12px;margin-bottom:9px}
 .bar{height:5px;background:var(--bar2);border-radius:99px;overflow:hidden;margin:3px 0 5px}
 .bar>i{display:block;height:100%;background:var(--bar)}
@@ -560,11 +561,12 @@ function card(s, now){
         data-sid="${esc(s.sessionId)}" title="click to expand">${esc(said.text)}</div>` : ""
       }</div>` : "";
   return `<div class="card ${st}">
-    <div class="head"><h2>${esc(s.name)}</h2>
+    <div class="head"><h2>${esc(s.project)}</h2>
       <span class="pill ${st}">${st === "busy" ? '<i class="spin"></i>' : ""}${
         a ? "needs you" : st}</span></div>
-    <div class="meta">${esc(s.project)}${s.branch?" · "+esc(s.branch):""} · ${esc(s.kind)}
-      · pid ${s.pid} · ${esc(s.model||"?")}${s.effort?" / "+esc(s.effort):""}
+    ${s.branch ? `<div class="branch">${esc(s.branch)}</div>` : ""}
+    <div class="meta">${esc(s.kind)}
+      · pid ${s.pid} · ${esc(s.name)} · ${esc(s.model||"?")}${s.effort?" / "+esc(s.effort):""}
       <br>${s.turns} turns · active ${ago(s.mtime, now)} ago</div>
     ${att}
     <div class="bar"><i style="width:${pct}%"></i></div>
