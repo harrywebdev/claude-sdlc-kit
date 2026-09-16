@@ -16,6 +16,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -313,6 +314,132 @@ def git_branch(cwd: str, cache: dict[str, str | None]) -> str | None:
     return b
 
 
+# The .app that a process ultimately belongs to - "Cursor" out of
+# /Applications/Cursor.app/Contents/MacOS/Cursor.
+APP_RE = re.compile(r"/([^/]+)\.app/Contents/MacOS/")
+MAX_ANCESTRY = 12
+
+
+def proc_table() -> dict[int, tuple[int, str, str]]:
+    """pid -> (ppid, tty, command) for every process; one ps call per tick."""
+    try:
+        r = subprocess.run(
+            ["ps", "-Ao", "pid=,ppid=,tty=,command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    out: dict[int, tuple[int, str, str]] = {}
+    for line in r.stdout.splitlines():
+        f = line.split(None, 3)
+        if len(f) < 4:
+            continue
+        try:
+            out[int(f[0])] = (int(f[1]), f[2], f[3])
+        except ValueError:
+            continue
+    return out
+
+
+def host(pid: int | None, procs: dict) -> dict | None:
+    """Which terminal window is this session sitting in? Walk the parent chain
+    (claude -> zsh -> pty-host -> Cursor.app) until an .app turns up. Under tmux or
+    over ssh nothing owns the session any more and there is nothing to focus."""
+    if not pid:
+        return None
+    tty = (procs.get(pid) or (0, "", ""))[1]
+    seen = 0
+    while pid > 1 and seen < MAX_ANCESTRY:
+        e = procs.get(pid)
+        if not e:
+            return None
+        m = APP_RE.search(e[2])
+        if m:
+            return {"app": m.group(1), "tty": tty if tty not in ("??", "-") else ""}
+        pid, seen = e[0], seen + 1
+    return None
+
+
+def _q(s: str) -> str:
+    """AppleScript string literal."""
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+# An editor keeps one window per open folder, so `open -a <editor> <cwd>` lands on
+# the very window the session runs in - and unlike System Events it needs no
+# Accessibility grant. A terminal emulator would just open a new window instead.
+EDITORS = {"Cursor", "Code", "VSCodium", "Windsurf", "Zed", "Positron"}
+
+
+def tab_script(app: str, dev: str) -> str | None:
+    """Terminal and iTerm publish the tty of every tab, so the exact tab can be
+    raised - the only two apps where focus is precise rather than approximate."""
+    if app == "Terminal":
+        return f'''tell application "Terminal"
+  activate
+  repeat with w in windows
+    repeat with t in tabs of w
+      if tty of t is {_q(dev)} then
+        set selected of t to true
+        set index of w to 1
+        return "tab"
+      end if
+    end repeat
+  end repeat
+end tell
+return "app"'''
+    if app.startswith("iTerm"):
+        return f'''tell application {_q(app)}
+  activate
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        if tty of s is {_q(dev)} then
+          select w
+          select t
+          select s
+          return "tab"
+        end if
+      end repeat
+    end repeat
+  end repeat
+end tell
+return "app"'''
+    return None
+
+
+def _run(cmd: list[str]) -> tuple[bool, str]:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)
+    if r.returncode == 0:
+        return True, r.stdout.strip()
+    err = r.stderr.strip().splitlines()
+    return False, err[-1] if err else "failed"
+
+
+def focus(pid: int, cwd: str) -> dict:
+    """Bring the terminal window this session runs in to the front."""
+    h = host(pid, proc_table())
+    if not h:
+        return {"ok": False, "error": "no terminal app owns this session"}
+    app = h["app"]
+    script = tab_script(app, f"/dev/{h['tty']}") if h["tty"] else None
+    if script:
+        ok, out = _run(["osascript", "-e", script])
+        scope = out or "app"
+    elif app in EDITORS and cwd:
+        ok, out = _run(["open", "-a", app, cwd])
+        scope = "window"
+    else:
+        ok, out = _run(["osascript", "-e", f"tell application {_q(app)} to activate"])
+        scope = "app"
+    return {"ok": True, "app": app, "scope": scope} if ok else {"ok": False, "error": out}
+
+
 def agents_json() -> list[dict]:
     try:
         raw = subprocess.run(
@@ -326,6 +453,7 @@ def agents_json() -> list[dict]:
 def build_state() -> dict:
     sessions = []
     branches: dict[str, str | None] = {}
+    procs = proc_table()
     for s in agents_json():
         sid = s.get("sessionId", "")
         path = transcript(sid)
@@ -360,6 +488,7 @@ def build_state() -> dict:
                     for k in ("input", "output", "cache_read", "cache_write", "thinking")
                 },
                 "mtime": mtime,
+                "host": (host(s.get("pid"), procs) or {}).get("app"),
                 "subagents": subagents(path, sid) if path else [],
             }
         )
@@ -429,6 +558,12 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 }
 .head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
 .head h2{font-size:14px;margin:0;font-weight:620;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.go{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);
+    background:none;color:var(--dim);font:inherit;font-size:10px;text-transform:uppercase;
+    letter-spacing:.05em;font-weight:600;cursor:pointer;flex:none}
+.go:hover{border-color:var(--busy);color:var(--busy)}
+.go:disabled{opacity:.4;cursor:default}
+.card.att .go{border-color:var(--att);color:var(--att)}
 .pill{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid currentColor;
       text-transform:uppercase;letter-spacing:.05em;font-weight:600}
 .pill.busy{color:var(--busy)}.pill.idle{color:var(--idle)}
@@ -537,12 +672,34 @@ function planKpis(u, now){
 // same reason as the KPI fold: the cards are rebuilt every tick
 const expanded = new Set();  // sessions whose last agent message is unfolded
 document.getElementById("grid").addEventListener("click", ev => {
+  const go = ev.target.closest(".go");
+  if(go){ focusSession(go); return; }
   const el = ev.target.closest(".say");
   if(!el) return;
   const sid = el.dataset.sid;
   expanded.has(sid) ? expanded.delete(sid) : expanded.add(sid);
   el.classList.toggle("open");
 });
+
+// The page has no way to raise a native window, so the server does it over
+// AppleScript; the button reports back in place because the window that comes
+// forward is not this one - the user is looking elsewhere by then.
+async function focusSession(btn){
+  const label = btn.innerHTML;
+  btn.disabled = true;
+  try {
+    const r = await (await fetch("/api/focus", {method: "POST", headers: {
+      "Content-Type": "application/json"}, body: JSON.stringify({
+        pid: Number(btn.dataset.pid), cwd: btn.dataset.cwd})})).json();
+    if(!r.ok) throw new Error(r.error || "failed");
+  } catch (e) {
+    btn.innerHTML = "\u2717 " + esc(String(e.message || e)).slice(0, 40);
+    btn.title = String(e.message || e);
+    setTimeout(() => { btn.innerHTML = label; btn.disabled = false; }, 4000);
+    return;
+  }
+  btn.disabled = false;
+}
 
 function card(s, now){
   const a = s.attention;
@@ -562,6 +719,9 @@ function card(s, now){
       }</div>` : "";
   return `<div class="card ${st}">
     <div class="head"><h2>${esc(s.project)}</h2>
+      ${s.host ? `<button class="go" data-pid="${s.pid}" data-cwd="${esc(s.cwd)}"
+        title="bring the ${esc(s.host)} window running this session to the front"
+        >&#8599; ${esc(s.host)}</button>` : ""}
       <span class="pill ${st}">${st === "busy" ? '<i class="spin"></i>' : ""}${
         a ? "needs you" : st}</span></div>
     ${s.branch ? `<div class="branch">${esc(s.branch)}</div>` : ""}
@@ -634,6 +794,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):  # noqa: N802
+        if not self.path.startswith("/api/focus"):
+            self.send_error(404)
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            req = json.loads(self.rfile.read(n) or b"{}")
+            res = focus(int(req["pid"]), str(req.get("cwd") or ""))
+        except (ValueError, KeyError, TypeError) as e:
+            res = {"ok": False, "error": str(e)}
+        body = json.dumps(res).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 

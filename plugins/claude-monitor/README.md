@@ -29,6 +29,30 @@ The hook writes `~/.claude/monitor/notify/<sessionId>.json`; the dashboard treat
 until the transcript moves past it — a user's answer means a write to the transcript, and that
 is what ages the record out.
 
+## Jumping to the session
+
+Every card carries a button with the name of the app the session is running in
+(`↗ Cursor`, `↗ Terminal`, …) — it brings that window to the front. The page itself cannot
+raise a native window, so the click goes to `POST /api/focus` and the server does the work.
+
+The app is found by walking the parent chain of the session's pid until an `.app` turns up:
+
+```
+68114 claude → 67568 zsh → 65236 Cursor Helper: terminal pty-host → 64749 Cursor.app
+```
+
+How precisely it lands depends on the app:
+
+| App | What it focuses | How |
+|---|---|---|
+| Terminal, iTerm2 | **the exact tab** | AppleScript — both publish the `tty` of every tab, and the session's tty comes from `ps` |
+| Cursor, VS Code, Windsurf, Zed, … | **the window of that folder** | `open -a <app> <cwd>` — an editor keeps one window per open folder |
+| anything else | the app, whichever window was last on top | `tell application … to activate` |
+
+No Accessibility grant is needed anywhere (which is why `open -a` beats System Events for the
+editors). Under `tmux` or over ssh no app owns the session any more — there the button is not
+rendered at all.
+
 ## Autostart
 
 The `SessionStart` hook **restarts** the dashboard on every session start — so a new session
@@ -82,6 +106,7 @@ start brings it back.
 | plan usage tiles | `~/.claude.json` → `cachedUsageUtilization` (the cache `/usage` fills) |
 | restart + URL into the session | `hooks/session-start.sh` → `tools/restart.sh` (SessionStart hook) |
 | the reason for waiting on the user | `hooks/notification.py` → `~/.claude/monitor/notify/<sessionId>.json` |
+| the app hosting a session | `ps -Ao pid,ppid,tty,command` — one call per refresh, the parent chain is walked in memory |
 
 Transcripts are read incrementally (the offset is remembered), so a refresh costs the same
 whether the file is small or several megabytes.
@@ -97,5 +122,8 @@ whether the file is small or several megabytes.
   approve a permission, though, nothing is written to the transcript until the tool finishes —
   so for a long command "waiting for tool permission" can hang around for a while after you
   clicked through. The `waiting` status from the CLI does not suffer from this.
+- Focus into an **editor** lands on the window of the session's `cwd`, not on the terminal
+  panel inside it — AppleScript cannot reach into an editor's terminal tabs. Two sessions in
+  the same folder therefore focus the same window.
 - A branch belongs to the **worktree, not the session** — several sessions in one directory are
   always on the same branch, and a `checkout` in one switches the branch for all the others.
