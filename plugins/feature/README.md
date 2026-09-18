@@ -1,18 +1,44 @@
 # feature
 
-A workflow for taking one feature from the task to the PR. Three commands, one namespace.
-No state file and no tracking of its own — you see the progress in the terminal and the
-subagents in [claude-monitor](../claude-monitor).
+A workflow for taking one feature from the task to the PR, plus the backlog it draws from.
+One namespace, no state file and no tracking of its own — you see the progress in the terminal
+and the subagents in [claude-monitor](../claude-monitor).
 
 | Command | What it does |
 |---|---|
-| `/feature:start <issue key \| URL \| description> [--fast\|--full]` | the whole run: task → branch → plan → implementation → E2E → lint → review → fixes → docs → consultation → commit & PR. Which of the checking steps actually run is decided at the plan gate |
+| `/feature:start <issue key \| URL \| BL-<n> \| description> [--fast\|--full]` | the whole run: task → branch → plan → implementation → E2E → lint → review → fixes → docs → consultation → commit & PR. Which of the checking steps actually run is decided at the plan gate |
 | `/feature:plan-review [path to plan]` | adversarial review of the plan against the real code, before anything gets written |
 | `/feature:commit` | git commit, no emoji and no Co-Authored-By, in the language of the repo's history |
 | `/feature:wiki [--scope=full\|incremental]` | the project wiki in `docs/wiki/` following the LLM-wiki pattern — discovers the stack itself |
+| `/feature:backlog-add <what should be done>` | files a ticket in `BACKLOG.md` — work that is not being done now |
+| `/feature:backlog-list [filter]` | overview of the backlog by priority, what is in progress, what to pick up next |
+| `/feature:backlog-groom [BL-<n> ...]` | confronts the tickets with the real code: what is done, duplicated, stale or unpickable |
 
 `/feature:start` calls `/feature:commit` and `/feature:wiki` itself (the wiki through the
 doc-writer); you run them standalone when the workflow is not running.
+
+## The backlog
+
+For a project without Jira — and for everything that would otherwise be lost in the reply. The
+`backlog` **skill** holds the format and triggers on its own the moment you hit something outside
+the current task ("should I fix this, or leave it?"); the three commands are the manual way in.
+
+Everything lives in a single **`BACKLOG.md` in the repository root**, versioned, because a backlog
+a fresh clone does not know about is a private note. Priority is the **order of the sections**,
+not a field. A ticket is one closeable thing and always states its **impact** — what breaks if
+nobody does it — plus a verifiable `Done when`. Finished tickets are **deleted**, not archived;
+the history is in git, and a `<!-- last-id: BL-N -->` marker at the end of the file keeps numbers
+from being recycled.
+
+The loop closes with `/feature:start`: `BL-7` is a fourth kind of argument next to an issue key,
+a URL and a description. The workflow reads the ticket, makes its `Done when` the acceptance
+criterion for the plan and the E2E, writes the branch back into the ticket, and deletes it in
+step 12 — but only once the condition is really met. In the other direction, whatever the review
+throws out as out of scope in step 8 goes through `/feature:backlog-add` instead of into the consultation,
+where it would die with the conversation.
+
+If the project already has a live tracker (Jira, GitHub Issues, `TODO.md`), the skill uses that
+one and does not create a second file.
 
 ## How the context is split
 

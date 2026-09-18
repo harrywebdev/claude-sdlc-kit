@@ -1,11 +1,12 @@
 ---
 description: Runs the workflow for a new feature — branch, plan and implementation in the main context; plan review, E2E, lint, code review, security and docs in isolated subagents
-argument-hint: <issue key | issue URL | task description> [--fast | --full]
+argument-hint: <issue key | issue URL | BL-<n> | task description> [--fast | --full]
 ---
 
 Workflow for developing a new feature. The argument is required — either an **issue key**
-(e.g. `IF-9`), an **issue URL** (e.g. `https://<your-org>.atlassian.net/browse/IF-9`) or a
-**free-form description** of the task.
+(e.g. `IF-9`), an **issue URL** (e.g. `https://<your-org>.atlassian.net/browse/IF-9`), a
+**backlog ticket** (e.g. `BL-7`, filed earlier by `/feature:backlog-add`) or a **free-form description**
+of the task.
 
 If the argument is missing, **ask** the user what to implement — do not continue without it.
 
@@ -74,8 +75,16 @@ Never skip a step silently and never skip one that was not in the table at the g
   only site available — then `getJiraIssue` with `responseContentFormat: "markdown"`). Extract
   summary, description, status, assignee. If no Atlassian MCP is available, ask the user to
   paste the ticket content.
+- **Backlog ID** (`BL-7`, case-insensitive — or whatever prefix the project's backlog uses, e.g.
+  `SD-18`) → read the ticket from `BACKLOG.md` in the repository root, or from the backlog file
+  the project already keeps; the `backlog` skill describes the file. Its title is the task, its
+  **`Done when` is the acceptance criterion** the plan and the E2E have to satisfy, and a
+  `Watch out` line is a risk the plan has to answer for. If the ID is not in the file, say so and
+  do not invent a task. A ticket that already carries a `Branch` line is being worked on — ask
+  whether to continue there or start over.
 - Free-form description → use it as is. Ask the user for a short slug for the branch (e.g.
-  `expand-details`).
+  `expand-details`). If the same thing is already sitting in the backlog, say so and work from
+  the ticket instead — do not build a second thread for it.
 - Summarize the task in 2–3 sentences and **wait for confirmation** before continuing. If
   anything is unclear, ask.
 
@@ -89,8 +98,12 @@ Never skip a step silently and never skip one that was not in the table at the g
   git pull --ff-only`).
 - Create the branch `feature/<KEY>-<slug>` (e.g. `feature/IF-9-expand-details`). The slug is
   short, lowercase, hyphens instead of spaces, ASCII only. Without an issue key, just
-  `feature/<slug>`. If the repo's history uses a different branch naming convention, follow
+  `feature/<slug>`. A backlog ticket behaves like a key: `feature/BL-7-<slug>`, the slug derived
+  from the ticket title. If the repo's history uses a different branch naming convention, follow
   that one instead.
+- **When the task came from the backlog, write the `Branch` line into its ticket** right after
+  creating the branch (`**Branch:** feature/BL-7-<slug>`, in the language the file uses), so an
+  open ticket does not look untouched. Nothing else in the ticket changes here.
 
 ### 3. The plan, its review — and the gate over the composition of steps
 - Put together an **implementation plan** — brief steps (what/where/how), key files, risks.
@@ -183,6 +196,10 @@ it would only confirm you.
 ### 8. Fixing the findings (main context)
 - **Triage** the findings: what you will fix, what is a false alarm (say why), what is out of
   scope (belongs in a ticket, not in this branch).
+- **Anything out of scope goes into the backlog through `/feature:backlog-add`, not into the reply.** A
+  finding mentioned only in the consultation dies with the conversation; this branch is not the
+  place to fix it. The same goes for a `pre-existing` finding from the E2E agent and for
+  anything the security review turns up outside the diff.
 - Fix `blocker` and `major`. `minor` at your discretion.
 - After the fixes, launch `feature:e2e-tester` again (if step 5 was not skipped) — a new
   agent with a clean context, not a continuation. Verify lint and
@@ -234,6 +251,11 @@ reader disable a check or commit their `.env`.
   fixes grew the change beyond what the gate assumed, put the dropped steps back (step 4 rule).
 
 ### 12. Commit & PR
+- **If the task came from the backlog, close the ticket first:** verify its `Done when` really is
+  met, then **delete the ticket** from `BACKLOG.md` (finished ones are deleted, not archived) and
+  leave the `<!-- last-id: BL-N -->` marker as it is — numbers are not recycled. If the condition
+  is **not** met, leave the ticket in place, say which part is missing, and let the user decide.
+  The edited `BACKLOG.md` goes into the same commit as the feature.
 - **Do not commit yourself.** Remind the user of the `/feature:commit` command.
 - After the commit, ask whether to push the branch. If yes:
   - `git push -u origin <branch>`

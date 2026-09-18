@@ -1,11 +1,11 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "feature",
-  "version": "0.1.0",
-  "description": "Feature development workflow — coding and E2E in the main context; plan review, lint, code review, security and docs in isolated subagents.",
+  "version": "0.2.0",
+  "description": "Feature development workflow — coding and E2E in the main context; plan review, lint, code review, security and docs in isolated subagents. Plus a versioned backlog for projects without Jira.",
   "author": {
     "name": "Miloslav Marel",
     "email": "miloslav.marel@gem.cz"
   },
-  "keywords": ["workflow", "git", "jira", "review", "commit", "wiki"]
+  "keywords": ["workflow", "git", "jira", "review", "commit", "wiki", "backlog"]
 }

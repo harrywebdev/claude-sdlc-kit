@@ -16,7 +16,7 @@
     },
     {
       "name": "feature",
-      "description": "Feature development workflow — coding and E2E in the main context; plan review, lint, code review, security and docs in isolated subagents.",
+      "description": "Feature development workflow — coding and E2E in the main context; plan review, lint, code review, security and docs in isolated subagents. Plus a versioned backlog for projects without Jira.",
       "author": { "name": "Miloslav Marel" },
       "category": "workflow",
       "source": "./plugins/feature"
