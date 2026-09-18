@@ -104,6 +104,27 @@ subagents.
 | `feature:security-reviewer` | branch + diff only (code **and** docs) | read-only + Skill | verdict + findings with a path to exploitation |
 | `feature:doc-writer` | task, diff | + Write/Edit | what it wrote, what it did not and why, wiki status |
 
+## The workflows
+
+The three reviews — plan, code and security — do not run as a single agent but as a **`Workflow`**:
+the same agent over three lenses at once (for the code review: bugs · simplify · scope against the
+plan), and every serious finding then has to survive an independent verifier that is told to refute
+it. What reaches the main context is the merged, deduplicated remainder. A small diff still gets a
+single agent — the fan-out is for changes where one reviewer's one angle is a real risk.
+
+| Script | Name | Lenses | Called from |
+|---|---|---|---|
+| `workflows/plan-review.mjs` | `feature-plan-review` | step order · reuse · edge cases | `/feature:plan-review`, step 3 |
+| `workflows/code-review.mjs` | `feature-code-review` | bugs · simplify · scope | step 7 |
+| `workflows/security-review.mjs` | `feature-security-review` | input & access · exposure · docs | step 10 |
+
+They are plain scripts in the plugin's `workflows/` directory (`.mjs` — `.js` is not loaded), so the
+commands only pass `args` and never retype the orchestration. The whole prompt for the reviewers is
+`args.brief`, which is what keeps context isolation a property of the caller: the script hands on
+what it is given and adds only the lens. The verifiers run **without** an `agentType`, so the
+claude-monitor dashboard still reads the step's verdict off the reviewers themselves.
+
+
 Every one of them opens its report with a `VERDICT:` line — `PASS | CHANGES` for the three
 reviewers, `CLEAN | HANDBACK` for the linter, `WRITTEN | NOTHING` for the doc-writer, optionally
 with a short summary after an em dash. The rest of the report stays prose written for a human;

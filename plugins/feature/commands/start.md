@@ -38,6 +38,11 @@ step 3 together with the plan.
 - Mechanical cleanup (formatter, lint, typecheck) is a subagent as well — its output tends to
   be the longest and least interesting thing in the whole workflow, so keep it out of the main
   context.
+- **The three reviews (plan, code, security) run as a `Workflow`** — the scripts live in the
+  plugin's `workflows/` directory and are called by name; the same agent goes over three lenses at
+  once and each of them has its serious findings refuted by an independent verifier before they
+  reach you. It is the same context isolation, only wider: a single reviewer finds
+  what it happens to look at, and what survives a refutation attempt is worth your time.
 
 ## The composition of steps (fast track)
 
@@ -110,7 +115,8 @@ Never skip a step silently and never skip one that was not in the table at the g
   Write it to `.claude/plans/<branch-slug>.md` so both the review and the user have something
   to read.
 - **Have it reviewed before you present it:** `/feature:plan-review .claude/plans/<slug>.md`,
-  i.e. the `feature:plan-reviewer` agent with a clean context. It verifies the plan against
+  i.e. `feature:plan-reviewer` with a clean context — as a `Workflow` over three lenses, the way
+  that command describes it. It verifies the plan against
   the real code — that the named files and symbols exist, that the step order holds, that
   nothing already in the repo is being reinvented, and that the plan covers the task and
   nothing beyond it.
@@ -182,10 +188,25 @@ Never skip a step silently and never skip one that was not in the table at the g
 triage either. Otherwise only run the reviewer on cleaned-up code, so the findings are not about
 formatting.
 
-Launch `feature:reviewer` (correctness + simplify lens). The prompt contains **only** this:
-- `baseBranch` and `branch`
-- the **task** confirmed in step 1 and the **approved plan** from step 3
-- the instruction that it pulls its own diff: `git diff <baseBranch>...HEAD`
+Run the review through the **`Workflow` tool** — the script is `feature-code-review`, which ships
+with this plugin (`workflows/code-review.mjs`). These instructions are the explicit opt-in that
+tool asks for, so do not ask the user for it again:
+
+```
+Workflow({ name: 'feature-code-review', args: { brief, baseBranch, branch } })
+```
+
+- `brief` is the reviewer's whole prompt and contains **only** this: `baseBranch` and `branch`, the
+  **task** confirmed in step 1, the **approved plan** from step 3, and the instruction that the
+  agent pulls its own diff (`git diff <baseBranch>...HEAD`).
+- The script fans `feature:reviewer` out over three lenses (bugs · simplify · scope against the
+  plan) and then has an independent agent try to refute every `blocker` and `major`. It returns one
+  record per lens: the prose report and the verdicts on its serious findings.
+- **Merge what comes back** before step 8: throw out the refuted findings, fold together what
+  several lenses found as one, order by severity. That merged list is what you triage.
+- For a small diff (a handful of files, no new module) one `feature:reviewer` through `Agent` is
+  enough; the same fallback applies if the workflow is unavailable in this session, just without
+  the refutation round.
 
 What does **not** belong in the prompt: what you tried and discarded, why you did something
 this way, what the user already approved, or your summary of the implementation. Knowing that,
@@ -224,9 +245,25 @@ Here, because now the diff is **complete including documentation** — and docs 
 security surface: examples with a token, ENV values, internal URLs, an instruction that has the
 reader disable a check or commit their `.env`.
 
-- Launch `feature:security-reviewer` — pass **only** `baseBranch` and `branch`. Not the task:
-  this is a solo check that should not be reasoning about what the feature was meant to do, and
-  it pulls its own diff, so it sees the code after the fixes as well as what the doc-writer wrote.
+- Run the review through the **`Workflow` tool** — the script is `feature-security-review`, which
+  ships with this plugin (`workflows/security-review.mjs`). These instructions are the explicit
+  opt-in that tool asks for, so do not ask the user for it again:
+
+  ```
+  Workflow({ name: 'feature-security-review', args: { brief, baseBranch, branch } })
+  ```
+
+- `brief` holds **only** `baseBranch` and `branch` and the instruction that the agent pulls its own
+  diff. Not the task: this is a solo check that should not be reasoning about what the feature was
+  meant to do. Because it pulls its own diff, it sees the code after the fixes as well as what the
+  doc-writer wrote.
+- The script fans `feature:security-reviewer` out over three lenses (untrusted input and access ·
+  what leaks out · documentation) and then has an independent agent build the concrete path to
+  exploitation for every `critical` and `high`. A finding nobody can build that path for comes back
+  refuted — that is `info`, not a vulnerability.
+- **Merge before triage**: drop the refuted ones to `info`, fold together what several lenses found,
+  order by severity. For a small diff one `feature:security-reviewer` through `Agent` is enough, and
+  the same fallback applies if the workflow is unavailable in this session.
 - **Skip it** only when the composition agreed at the gate dropped it, or when **neither the
   code nor the documentation** touches a security surface — just tell the user why. The
   disqualifier list guards both: a diff that reaches a security surface gets this step back
