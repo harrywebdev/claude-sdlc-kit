@@ -2,7 +2,7 @@
 name: backlog
 description: Keeps work that is not being done now in the project's versioned BACKLOG.md — both a finding you hit outside the current task and a feature you intend to build later. The backlog is opt-in: it exists in a project only once /feature:backlog-init has set it up, and where it is active, a finding gets offered for filing rather than only mentioned. Use when you run into a previous bug, stale documentation, a weakness, debt or an idea that does not belong in the current task — and whenever you catch yourself asking "should I fix this, or leave it?". Also on requests like "file a ticket", "add it to the backlog", "set up a backlog", "what is left to do", "go through the backlog".
 metadata:
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # Backlog
@@ -98,8 +98,8 @@ decides only **how** it gets offered.
 ```markdown
 # Backlog
 
-Work that is not being done now. Priority is the order of the sections; finished tickets are
-deleted. A ticket is picked up with `/feature:start BL-<n>`.
+Work that is not being done now. Priority is the order of the sections; a closed ticket moves to
+`BACKLOG.done.md`. A ticket is picked up with `/feature:start BL-<n>`.
 
 ## High priority
 
@@ -141,12 +141,74 @@ language: they are read by machine.
   wrong does.
 - **`Done when` is a verifiable condition**, not a restatement of the title. Not "fix X" but the
   state in which it is fixed.
-- **The file holds open items only.** A finished ticket is **deleted**, not archived — what was
-  done is in the git history, and a backlog you have to dig through an archive to read is a
-  backlog nobody reads.
-- **Numbers are never recycled.** Because finished tickets are deleted, the highest number in the
-  file is not enough — keep the `<!-- last-id: BL-N -->` marker at the end and raise it after
-  every addition.
+- **The file holds open items only.** A ticket that is finished, or that is going away for any
+  other reason, **leaves `BACKLOG.md` and lands in `BACKLOG.done.md`** — see the next section.
+  It is never crossed out in place and never left in a "Done" section: a backlog you have to read
+  past finished items to use is a backlog nobody reads.
+- **Numbers are never recycled.** Because closed tickets leave the file, the highest number in it
+  is not enough — keep the `<!-- last-id: BL-N -->` marker at the end and raise it after every
+  addition. The marker lives in `BACKLOG.md` and is never lowered, not even when the highest
+  ticket moves to the archive.
+
+## Closing a ticket — `BACKLOG.done.md`
+
+A ticket never just disappears. It moves, verbatim, to **`BACKLOG.done.md`** in the repository
+root — the same directory, the same versioning as `BACKLOG.md`.
+
+This applies to **every** way a ticket leaves the backlog, not just success: done, no longer
+relevant, merged into another one, dropped by decision. What differs is a single added line
+saying why.
+
+### How to move it
+
+1. **Cut the whole ticket** out of `BACKLOG.md` — heading, `Area`, description, `Done when`, all
+   of it. No trace stays behind: no strikethrough, no "(done)" in the title, no "Done" section.
+2. **Paste it at the top** of `BACKLOG.done.md`, under the header. Newest first, so the file reads
+   as a history without scrolling to the bottom.
+3. **Add a `Closed` line** right under the heading, before everything else:
+
+   `**Closed:** 2026-09-18 · done · commit 8c48187`
+
+   The date from `date +%F` (never guessed), then one of `done` / `stale` / `duplicate of BL-4` /
+   `dropped`, and where relevant the evidence: a commit, a branch, one clause of reasoning. For
+   `done` this is what makes the entry worth keeping — six months later the question is *what
+   closed it*, and the answer is in that line.
+4. **Leave the `<!-- last-id: BL-N -->` marker in `BACKLOG.md`** where it is. The archive has no
+   marker of its own.
+
+If `BACKLOG.done.md` does not exist yet, create it when the first ticket closes — header only,
+no empty sections. It is not set up in advance by the init.
+
+```markdown
+# Backlog — closed
+
+Tickets that have left BACKLOG.md. Newest first. Nothing here is work waiting to be done.
+
+### BL-3 — Monitor: switch polling to SSE
+**Closed:** 2026-09-18 · done · commit 8c48187
+**Area:** performance · plugins/claude-monitor/tools/claude_monitor.py
+
+The dashboard polls once a second even when nothing happens — with 8 open sessions it keeps
+the CPU busy and the fan on. It grows linearly with the number of sessions.
+
+**Done when:** the dashboard updates without polling and idle CPU stays under 1 %
+```
+
+### What the archive is not
+
+- **It is not a second backlog.** Nothing in it is waiting for anyone. `/feature:backlog-list`
+  never reads it, `/feature:backlog-groom` never grooms it, and `/feature:start` never picks a
+  ticket out of it. Read it only when someone asks what happened to a ticket, or asks what got
+  done.
+- **It is not a place to park work.** A ticket that is still open does not go there to make the
+  backlog look tidier. When a ticket stops being worth doing, that is `dropped` and it needs a
+  reason in the `Closed` line.
+- **It is not trimmed.** The archive grows and that is fine — nobody reads it front to back. Do
+  not "clean it up", do not split it by year unless the user asks.
+- **A ticket does come back** if it turns out it was closed too early: move it back to
+  `BACKLOG.md`, drop the `Closed` line, and **keep its original number**. Numbers are not
+  recycled, and reusing the old one is what keeps the archive entry and the reopened ticket
+  legible as the same thing.
 
 ## Rules of conduct
 
@@ -154,6 +216,7 @@ language: they are read by machine.
   that you filed it. They may well decide they want it now.
 - **Do not change other people's priorities** unasked. File new ones where their impact puts them.
 - **Do not close a ticket you have not verified.** Only something that meets its own
-  `Done when` belongs in "done".
+  `Done when` gets closed as `done` — anything else leaves with an honest reason in the `Closed`
+  line, not with `done`.
 - On "what is left" or "go through the backlog", **read the file and summarize it** by priority —
   do not recite it verbatim.

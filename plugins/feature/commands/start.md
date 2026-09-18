@@ -255,10 +255,12 @@ reader disable a check or commit their `.env`.
 
 ### 12. Commit & PR
 - **If the task came from the backlog, close the ticket first:** verify its `Done when` really is
-  met, then **delete the ticket** from `BACKLOG.md` (finished ones are deleted, not archived) and
-  leave the `<!-- last-id: BL-N -->` marker as it is — numbers are not recycled. If the condition
-  is **not** met, leave the ticket in place, say which part is missing, and let the user decide.
-  The edited `BACKLOG.md` goes into the same commit as the feature.
+  met, then **move the ticket out of `BACKLOG.md` into `BACKLOG.done.md`** — cut it out whole,
+  paste it at the top of the archive and add a `**Closed:** <date from `date +%F`> · done ·
+  <branch or commit>` line; the `backlog` skill describes the file. Leave the
+  `<!-- last-id: BL-N -->` marker as it is — numbers are not recycled. If the condition is **not**
+  met, leave the ticket in place, say which part is missing, and let the user decide. Both edited
+  files go into the same commit as the feature.
 - **Do not commit yourself.** Remind the user of the `/feature:commit` command.
 - After the commit, ask whether to push the branch. If yes:
   - `git push -u origin <branch>`

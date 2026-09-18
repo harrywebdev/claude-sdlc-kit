@@ -44,6 +44,9 @@ With no tracker found, continue without asking.
 the `<!-- last-id: BL-0 -->` marker at the end — the skill holds the exact shape. **In the
 language the repo uses** (its commits, its README).
 
+Do **not** create `BACKLOG.done.md` — the archive of closed tickets comes into being when the
+first ticket closes, not before. An empty archive is just noise in the repository.
+
 Check that the file is not ignored — `git check-ignore -v BACKLOG.md`. A backlog a fresh clone
 does not know about is just a private note. Projects that have the whole `.claude/` in
 `.gitignore` are the usual cause; the file belongs in the root, not in `.claude/`. If it comes

@@ -18,9 +18,13 @@ Show what is waiting in the project's backlog. The format of the file is describ
    line each once there are more than about five. At the end, the count per section.
 4. **Mark what is already running** — tickets with a `Branch` line. Check whether the branch
    still exists (`git branch --list`, `git branch -r --list`): a ticket pointing at a branch that
-   is gone is either finished (delete it) or abandoned (clear the line). Say which, do not fix it
+   is gone is either finished (close it) or abandoned (clear the line). Say which, do not fix it
    here — that is what `/feature:backlog-groom` is for.
 5. **Close with a recommendation**: which ticket to pick up next and why, plus the command
    `/feature:start BL-<n>`. One sentence, not a ranking of all of them.
+
+**Do not read `BACKLOG.done.md`.** The archive holds closed tickets; nothing in it is waiting for
+anyone, and mixing it in is what makes a backlog unreadable. Reach for it only when the user asks
+what happened to a ticket, or what has been done.
 
 Do not modify the file. This is a read-only command.
