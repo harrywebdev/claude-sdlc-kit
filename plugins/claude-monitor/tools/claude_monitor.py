@@ -21,6 +21,7 @@ import subprocess
 import threading
 import time
 import webbrowser
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -48,6 +49,22 @@ CONTEXT_LIMITS = {
 }
 DEFAULT_LIMIT = 1_000_000
 
+# The checking steps of /feature:start - the ones that run as a subagent and so leave a
+# trace of their own. The rest of that workflow runs in the main context, where there is
+# nothing to read, and the dashboard does not pretend otherwise.
+FEATURE_STEPS = [
+    ("plan", "feature:plan-reviewer"),
+    ("e2e", "feature:e2e-tester"),
+    ("lint", "feature:linter"),
+    ("review", "feature:reviewer"),
+    ("docs", "feature:doc-writer"),
+    ("security", "feature:security-reviewer"),
+]
+# The first line of an agent's report (see plugins/feature/agents/*.md). A verdict that
+# did not come back clean earns a `*` on the pill; the word itself is in the tooltip.
+VERDICT_RE = re.compile(r"VERDICT:\s*([A-Z]+)")
+VERDICT_FLAG = {"CHANGES", "HANDBACK", "FAIL"}
+
 # Fields from ~/.claude.json -> cachedUsageUtilization.utilization.limits
 LIMIT_LABELS = {"session": "session (5 h)", "weekly_all": "week, all models",
                 "weekly_scoped": "week"}
@@ -74,6 +91,7 @@ def _fresh() -> dict:
         "branch": None,
         "last_ts": None,
         "last_agent": None,
+        "feature_run": None,
     }
 
 
@@ -90,6 +108,14 @@ def agent_text(content) -> str:
         if isinstance(b, dict) and b.get("type") == "text"
     ).strip()
     return (txt[:AGENT_TEXT_MAX] + "\u2026") if len(txt) > AGENT_TEXT_MAX else txt
+
+
+def iso_epoch(ts: str | None) -> float | None:
+    """Transcript timestamps are UTC ISO; subagent files are compared by mtime."""
+    try:
+        return datetime.fromisoformat((ts or "").replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 def scan(path: str) -> dict:
@@ -129,8 +155,16 @@ def scan(path: str) -> dict:
         msg = e.get("message")
         if not isinstance(msg, dict):
             continue
-        if e.get("type") == "assistant" and not e.get("isSidechain"):
-            # Turns that only think or call tools keep the previous reply.
+        if e.get("type") == "user":
+            # /feature:start leaves this marker in the transcript, so the row can come up
+            # with the run itself instead of waiting for the first subagent to be spawned.
+            body = msg.get("content")
+            if isinstance(body, str) and "<command-name>/feature:start<" in body:
+                c["feature_run"] = iso_epoch(e.get("timestamp"))
+        if e.get("type") == "assistant":
+            # Turns that only think or call tools keep the previous reply. A subagent
+            # transcript is all sidechain - its last reply is the report the
+            # orchestrator gets, and that is where the verdict is read from.
             said = agent_text(msg.get("content"))
             if said:
                 c["last_agent"] = {"text": said, "ts": e.get("timestamp")}
@@ -208,10 +242,13 @@ def subagents(transcript_path: str, session_id: str) -> list[dict]:
             mtime = os.stat(jsonl).st_mtime
         except OSError:
             mtime = meta_path.stat().st_mtime
+        said = (t["last_agent"] or {}).get("text") or ""
+        m = VERDICT_RE.search(said)
         out.append(
             {
                 "id": meta_path.name[len("agent-") : -len(".meta.json")],
                 "type": meta.get("agentType") or "?",
+                "verdict": m.group(1) if m else None,
                 "desc": meta.get("description") or "",
                 "depth": meta.get("spawnDepth", 1),
                 "model": t["model"],
@@ -223,6 +260,68 @@ def subagents(transcript_path: str, session_id: str) -> list[dict]:
         )
     out.sort(key=lambda a: a["mtime"], reverse=True)
     return out
+
+
+def feature_steps(
+    subs: list[dict], main_busy: bool, run_since: float | None
+) -> list[dict] | None:
+    """The checking steps of /feature:start, summed up out of the subagent tree: which
+    ran, how often, and with what verdict. Repetition is `review x2` - the steps are a
+    fixed row and the attempts live inside one, never an arrow back. Nothing is written
+    anywhere for this; a step nobody ran is simply shown as not run.
+
+    `run_since` is when /feature:start was last typed, read off the marker the command
+    leaves in the transcript. It does two things: the row comes up with the run itself
+    (the first steps have no subagent of their own), and a second feature in the same
+    session - `/clear` keeps the session id - starts from an empty row instead of
+    inheriting the agents of the one before it."""
+    runs: dict[str, list[dict]] = {t: [] for _, t in FEATURE_STEPS}
+    for a in subs:
+        if a["type"] in runs and not (run_since and a["mtime"] < run_since):
+            runs[a["type"]].append(a)
+    if not run_since and not any(runs.values()):
+        return None
+    out = []
+    for label, agent_type in FEATURE_STEPS:
+        got = sorted(runs[agent_type], key=lambda a: a["mtime"])
+        last = got[-1] if got else None
+        out.append(
+            {
+                "label": label,
+                "state": "running" if last and last["active"] else "done" if got else "unrun",
+                "attempts": len(got),
+                "verdict": last["verdict"] if last else None,
+                "flag": bool(last and last["verdict"] in VERDICT_FLAG),
+                "mtime": last["mtime"] if last else None,
+            }
+        )
+
+    # Two steps have no agent to stand for them - but the order of the workflow does, and
+    # that order is fixed. Implementation starts once the plan has been reviewed; fixing
+    # findings starts once the review is back. Either is over the moment a step that comes
+    # after it runs - e2e does not run before the implementation, docs not before the fixes.
+    # The one thing this gets wrong is the minute or two between the plan review and the
+    # gate, where the main context is still folding findings into the plan and `impl`
+    # already says implementation.
+    ran = {st["label"]: st["attempts"] for st in out}
+
+    def derived(label: str, starts_after: str, ends_with: list[str]) -> dict:
+        return {
+            "label": label,
+            "state": "done" if any(ran[b] for b in ends_with)
+            else "running" if ran[starts_after] and main_busy
+            else "unrun",
+            "attempts": 0,
+            "verdict": None,
+            "flag": False,
+            "mtime": None,
+        }
+
+    out.append(derived("impl", "plan", ["e2e", "lint", "review", "docs", "security"]))
+    out.append(derived("fixes", "review", ["docs", "security"]))
+    by_label = {st["label"]: st for st in out}
+    return [by_label[lbl] for lbl in
+            ("plan", "impl", "e2e", "lint", "review", "fixes", "docs", "security")]
 
 
 def _parse_usage() -> dict | None:
@@ -463,6 +562,10 @@ def build_state() -> dict:
             mtime = os.stat(path).st_mtime if path else 0
         except OSError:
             mtime = 0
+        subs = subagents(path, sid) if path else []
+        # Busy with nothing delegated = the main context itself is working.
+        main_busy = s.get("status") == "busy" and not any(a["active"] for a in subs)
+        branch = git_branch(s.get("cwd", ""), branches) or t["branch"]
         att = attention(s, sid, mtime)
         if att:  # only a waiting session shows what it last said
             att["lastAgent"] = t["last_agent"]
@@ -477,7 +580,7 @@ def build_state() -> dict:
                 "cwd": s.get("cwd", ""),
                 "project": os.path.basename(s.get("cwd", "")) or "?",
                 "startedAt": s.get("startedAt"),
-                "branch": git_branch(s.get("cwd", ""), branches) or t["branch"],
+                "branch": branch,
                 "model": t["model"],
                 "effort": t["effort"],
                 "turns": t["turns"],
@@ -489,7 +592,9 @@ def build_state() -> dict:
                 },
                 "mtime": mtime,
                 "host": (host(s.get("pid"), procs) or {}).get("app"),
-                "subagents": subagents(path, sid) if path else [],
+                "subagents": subs,
+                "steps": feature_steps(subs, main_busy, t["feature_run"]),
+                "mainBusy": main_busy,
             }
         )
 
@@ -553,7 +658,7 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
           animation:pulse 1.8s ease-in-out infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 3px rgba(255,176,46,.04),0 0 8px -4px var(--att)}}
 @media (prefers-reduced-motion:reduce){
-  .card.att{animation:none}
+  .card.att,.st.running{animation:none}
   .spin{animation:none;border-top-color:currentColor}
 }
 .head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
@@ -595,6 +700,16 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .sa-name{font-weight:550;white-space:nowrap}
 .sa-desc{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .sa-tok{color:var(--dim);font-variant-numeric:tabular-nums;flex:none}
+.steps{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;
+       display:flex;gap:4px;flex-wrap:wrap}
+.st{font-style:normal;font-size:11px;padding:1px 6px;border-radius:5px;
+    border:1px solid var(--line);color:var(--dim)}
+.st.done{border-color:var(--idle);color:var(--idle)}
+.st.running{border-color:var(--att);color:var(--att);animation:blink 1.6s ease-in-out infinite}
+.st.unrun{border-style:dashed;opacity:.35}
+.st.main{margin-right:4px}
+.st.main.unrun{opacity:.25}
+@keyframes blink{50%{opacity:.4}}
 .ver{position:absolute;top:18px;right:18px;color:var(--dim);font-size:11px;
      font-variant-numeric:tabular-nums}
 </style>
@@ -669,6 +784,22 @@ function planKpis(u, now){
   }).join("");
 }
 
+// The checking steps of /feature:start, straight out of the subagent tree: green ran,
+// orange is running, dashed never ran. `review x2` is a second round of the same step.
+function steps(s, now){
+  if(!s.steps) return "";
+  const main = `<i class="st main ${s.mainBusy ? "running" : "unrun"}" title="${
+    s.mainBusy ? "the main context is working - nothing is delegated right now"
+               : "the main context is not working"}">main</i>`;
+  return `<div class="steps">` + main + s.steps.map(t => `<i class="st ${t.state}" title="${
+    esc(t.mtime ? `${t.verdict ? t.verdict + " \u00b7 " : ""}${t.attempts} run${
+      t.attempts > 1 ? "s" : ""}, last ${ago(t.mtime, now)} ago`
+      : t.state === "unrun" ? "has not run"
+      : "runs in the main context - read off the order of the workflow")}">${
+    esc(t.label)}${t.flag ? "*" : ""}${
+    t.attempts > 1 ? " &times;" + t.attempts : ""}</i>`).join("") + `</div>`;
+}
+
 // same reason as the KPI fold: the cards are rebuilt every tick
 const expanded = new Set();  // sessions whose last agent message is unfolded
 document.getElementById("grid").addEventListener("click", ev => {
@@ -738,6 +869,7 @@ function card(s, now){
       <div>input <b>${n(t.input)}</b></div>
       <div>thinking <b>${n(t.thinking)}</b></div>
     </div>
+    ${steps(s, now)}
     ${subs ? `<div class="subs">${subs}</div>` : ""}
   </div>`;
 }
