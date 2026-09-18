@@ -24,13 +24,21 @@ to the code:
 | 1 Task · 2 Branch | main context |
 | 3 Plan — drafting and folding in findings | main context |
 | 3 Plan — review | `feature:plan-reviewer` (clean context) |
-| 4 Implementation · 5 E2E | main context |
+| 4 Implementation | main context |
+| 5 E2E | `feature:e2e-tester` (clean context) |
 | 6 Lint & format | `feature:linter` (clean context) |
 | 7 Code review | `feature:reviewer` (clean context) |
 | 8 Fixing findings | main context |
 | 9 Documentation | `feature:doc-writer` (clean context) |
 | 10 Security | `feature:security-reviewer` (clean context, sees the docs too) |
 | 11 Consultation · 12 Commit & PR | main context |
+
+E2E is a subagent for the same reason the reviewers are: the author tests the path they
+happened to build, somebody who did not write the code tests the path the user walks. It gets
+the task — without it there is nothing to test — but not a word about how the code came about.
+And it writes **tests, not source**: a bug it uncovers goes back to the author, exactly as a
+reviewer's finding does. The runner's output, which is the second longest thing in the whole
+workflow, stays with it.
 
 Mechanical cleanup is a subagent for the same reason, even though it judges nothing: the output
 of the formatter, the linter and the typechecker is the longest and least interesting thing in
@@ -64,10 +72,17 @@ subagents.
 | Agent | Context | Tools | Output |
 |---|---|---|---|
 | `feature:plan-reviewer` | task, plan | read-only | verdict + Blocking/Should-fix findings against the real code |
+| `feature:e2e-tester` | task, diff | + Write/Edit | PASS/FAIL/SKIPPED + what it wrote, findings when red |
 | `feature:linter` | branch + diff only | + Edit | what the formatter/lint/typecheck fixed and what is left for the author |
 | `feature:reviewer` | task, plan, diff | read-only + Skill | PASS/CHANGES verdict + findings by severity |
 | `feature:security-reviewer` | branch + diff only (code **and** docs) | read-only + Skill | verdict + findings with a path to exploitation |
 | `feature:doc-writer` | task, diff | + Write/Edit | what it wrote, what it did not and why, wiki status |
+
+Every one of them opens its report with a `VERDICT:` line — `PASS | CHANGES` for the three
+reviewers, `CLEAN | HANDBACK` for the linter, `WRITTEN | NOTHING` for the doc-writer, optionally
+with a short summary after an em dash. The rest of the report stays prose written for a human;
+that one line is the only part anything else reads (the claude-monitor dashboard picks the
+step's verdict off it). Nothing depends on it — where nobody reads it, it costs one line.
 
 ## The composition of steps
 

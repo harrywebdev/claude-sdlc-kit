@@ -45,6 +45,8 @@ will not get it.
 ## Output
 
 ```
+VERDICT: CLEAN | HANDBACK
+
 Formatter: <command> — <N files changed> | skipped <reason>
 Linter:    <command> — <N autofixed, N by hand> | clean | skipped <reason>
 Typecheck: <command> — clean | <N errors fixed>
@@ -53,6 +55,12 @@ Left for the author:
 1. file.ts:42 — the tool error → why fixing it needs knowledge of intent
 ...
 ```
+
+- `VERDICT:` is the **first line** of the report — nothing above it, not a word of
+  preamble. The live dashboard reads the step's result off that line. An optional
+  short summary may follow an em dash: `VERDICT: HANDBACK — 2 for the author`.
+- `HANDBACK` when **Left for the author** is not empty — whatever you fixed yourself.
+  Everything mechanical done and nothing handed back is `CLEAN`.
 
 If everything is clean and you changed nothing, this is a one-line report. Do not inflate it.
 

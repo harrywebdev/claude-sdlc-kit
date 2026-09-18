@@ -1,5 +1,5 @@
 ---
-description: Runs the workflow for a new feature — branch, plan, implementation and E2E in the main context; plan review, lint, code review, security and docs in isolated subagents
+description: Runs the workflow for a new feature — branch, plan and implementation in the main context; plan review, E2E, lint, code review, security and docs in isolated subagents
 argument-hint: <issue key | issue URL | task description> [--fast | --full]
 ---
 
@@ -15,13 +15,16 @@ step 3 together with the plan.
 
 ## How the context is split
 
-- **Main context (you)** — task, plan, implementation, E2E tests, fixing findings,
-  consultation, commit and PR. All of this holds a single thread and you stay with it.
-- **Isolated subagents (steps 3, 6, 7, 9 and 10)** — plan review, cleanup, code review,
-  documentation and finally security. Each gets a **clean context** holding at most the task,
+- **Main context (you)** — task, plan, implementation, fixing findings, consultation, commit
+  and PR. All of this holds a single thread and you stay with it.
+- **Isolated subagents (steps 3, 5, 6, 7, 9 and 10)** — plan review, E2E, cleanup, code
+  review, documentation and finally security. Each gets a **clean context** holding at most the task,
   the plan and the branch — never the course of development. They do not know how you arrived
   at the solution, what you weighed or what you threw away along the way; that is what makes
   their findings mean something. Each pulls its own diff.
+- `feature:e2e-tester` gets the task and the branch, never the course of development: the
+  author tests the path they happened to build, somebody who did not write the code tests the
+  path the user walks. It writes tests, **not source** — a bug it finds goes back to you.
 - `feature:linter` and `feature:security-reviewer` get **only the branch**: cleanup does not
   need the task, and a security review must have nothing available to talk it into believing
   a hole is actually the design.
@@ -133,17 +136,22 @@ Never skip a step silently and never skip one that was not in the table at the g
   touches one of the disqualifiers, **put the dropped step back** and say so in one line.
   Putting a step back needs no approval — only dropping one does.
 
-### 5. E2E tests
-- **Skip the whole step if:**
-  - the composition agreed at the gate dropped it, **or**
-  - the project has no E2E setup (no e2e test directory, no runner config such as
-    `playwright.config.*` / `cypress.config.*`, no e2e script in the project's manifest), **or**
-  - this is a trivial fix (typo, one-line change, copy change, minor style fix, documentation).
-- Otherwise: if the change **can be tested through the UI**, write or update a test covering
-  the golden path, in the project's existing e2e location and style.
-- Run the project's own e2e command and fix until it passes.
-- If the change **cannot reasonably be tested through the UI** (pure tooling, infra,
-  documentation), ask the user whether to skip the step.
+### 5. E2E tests — isolated subagent
+- **Skip the whole step if** the composition agreed at the gate dropped it, or this is a
+  trivial fix (typo, one-line change, copy change, minor style fix, documentation). Whether
+  the project even has an E2E setup, and whether the change is reachable through the UI, you
+  do **not** decide here — that is exactly what the agent checks first.
+- Otherwise launch `feature:e2e-tester` (`baseBranch`, `branch`, the **task**). It writes or
+  updates the test for the golden path, runs the project's own command and fixes **its own
+  test** until it passes. Hundreds of lines of runner output stay with it.
+- Do not send it the course of development. It needs the task to know what to test, and
+  nothing else — least of all your account of why the code looks the way it does.
+- A `FAIL` verdict is a finding, not a failed step: the agent does not repair source code.
+  Fix it yourself and launch a **new** agent (never a continuation of the old one). A
+  `pre-existing` finding that has nothing to do with the task goes to the user in step 11 —
+  do not chase somebody else's bug on this branch.
+- `SKIPPED` is a legitimate result (no E2E setup in the project, or nothing reachable through
+  the UI). Pass it on in one line and move on — do not have a runner installed for it.
 
 ### 6. Lint & format — isolated subagent
 - Launch `feature:linter` (`baseBranch`, `branch`). It formats and lints **only the files in
@@ -176,7 +184,8 @@ it would only confirm you.
 - **Triage** the findings: what you will fix, what is a false alarm (say why), what is out of
   scope (belongs in a ticket, not in this branch).
 - Fix `blocker` and `major`. `minor` at your discretion.
-- After the fixes, run the e2e command again (if step 5 was not skipped). Verify lint and
+- After the fixes, launch `feature:e2e-tester` again (if step 5 was not skipped) — a new
+  agent with a clean context, not a continuation. Verify lint and
   typecheck yourself; if a lot piled up, rerun `feature:linter` instead.
 - If the reviewer returned `CHANGES` and you disagree with a substantial part of it, do not
   argue with it in another round — take it to step 11 as a question for the user.
@@ -240,7 +249,8 @@ reader disable a check or commit their `.env`.
 - **Never** `git add -A` or `.` — always specific files.
 - **Never** `--no-verify`, `--amend`, `reset --hard`, force push.
 - Always branch from a fresh `baseBranch`, not from another feature branch.
-- If an E2E test fails repeatedly for a reason outside the task (a pre-existing bug), stop and ask.
+- If the E2E agent keeps returning `FAIL` for a reason outside the task (a pre-existing bug),
+  stop and ask — do not fix somebody else's bug on this branch.
 - **Talk to the user in the language they write in.** These instructions are in English; the
   conversation does not have to be. Report where you are in the process briefly in your reply —
   no state file gets written anywhere.
