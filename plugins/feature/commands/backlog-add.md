@@ -20,8 +20,9 @@ before writing anything.
 
 1. **Find the backlog.** `BACKLOG.md` in the repository root. If the project has a different live
    tracker (Jira, GitHub Issues, `TODO.md`), use that one and say so instead of creating a second
-   file. If `BACKLOG.md` does not exist, create it with the header and the three priority
-   sections, in the language the repo uses.
+   file. **If no backlog exists, do not create one** — say the ticket in one sentence the way you
+   would have written it, point at `/feature:backlog-init`, and stop. Setting a backlog up is the
+   user's decision; this command only files into one that is already there.
 2. **Check for a duplicate first.** Read the existing tickets. If the item is already there,
    **extend that ticket** — a second one about the same thing turns a backlog into noise.
 3. **Verify the claim against the code** before describing an impact. A ticket built on an
@@ -39,5 +40,6 @@ before writing anything.
 - Whatever `/feature:backlog-add` gets asked for it files — but if it is genuinely a two-minute fix and
   the user is standing right there, say so in one sentence. They may want it now rather than in
   the backlog.
+- **Never create the backlog file.** That belongs to `/feature:backlog-init` alone.
 - **Never** file what is part of the current task instead of doing it.
 - Touch no ticket other than the one you are filing (or extending).

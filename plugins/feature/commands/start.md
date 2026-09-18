@@ -199,7 +199,10 @@ it would only confirm you.
 - **Anything out of scope goes into the backlog through `/feature:backlog-add`, not into the reply.** A
   finding mentioned only in the consultation dies with the conversation; this branch is not the
   place to fix it. The same goes for a `pre-existing` finding from the E2E agent and for
-  anything the security review turns up outside the diff.
+  anything the security review turns up outside the diff. Name the findings and their priority
+  and **have the filing approved** — do not write into `BACKLOG.md` on your own. If the project
+  has no backlog, say them in the consultation in step 11 and mention `/feature:backlog-init`
+  once; **do not set a backlog up mid-run.**
 - Fix `blocker` and `major`. `minor` at your discretion.
 - After the fixes, launch `feature:e2e-tester` again (if step 5 was not skipped) — a new
   agent with a clean context, not a continuation. Verify lint and

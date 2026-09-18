@@ -1,8 +1,8 @@
 ---
 name: backlog
-description: Keeps work that is not being done now in the project's versioned BACKLOG.md — both a finding you hit outside the current task and a feature you intend to build later. Use when you run into a previous bug, stale documentation, a weakness, debt or an idea that does not belong in the current task — and whenever you catch yourself asking "should I fix this, or leave it?". Also on requests like "file a ticket", "add it to the backlog", "what is left to do", "go through the backlog".
+description: Keeps work that is not being done now in the project's versioned BACKLOG.md — both a finding you hit outside the current task and a feature you intend to build later. The backlog is opt-in: it exists in a project only once /feature:backlog-init has set it up, and where it is active, a finding gets offered for filing rather than only mentioned. Use when you run into a previous bug, stale documentation, a weakness, debt or an idea that does not belong in the current task — and whenever you catch yourself asking "should I fix this, or leave it?". Also on requests like "file a ticket", "add it to the backlog", "set up a backlog", "what is left to do", "go through the backlog".
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # Backlog
@@ -40,15 +40,58 @@ work gets parked.
 1. **`BACKLOG.md` in the repository root.** It must be **versioned** — a backlog a fresh clone
    does not know about is just a private note. Watch out for projects with the whole `.claude/`
    in `.gitignore`: there the file does **not** belong in `.claude/` unless an exception is added.
-2. If the file does not exist, **create it** with the header and the three priority sections
-   (see below).
-3. If the project has its own `CLAUDE.md`, **add a paragraph** saying tickets go here — otherwise
-   the next agent will not see the convention.
-4. If the project already has a live tracker (Jira, GitHub Issues, `TODO.md`, an older
+2. If the project already has a live tracker (Jira, GitHub Issues, `TODO.md`, an older
    `serviceDesk.md`), **use that one** and do not create this file — keep its filename, its
    section layout and its **existing ID prefix** (`SD-18` stays `SD-`), because renaming it would
    orphan every ticket already in it and every reference to one. Everything below then applies to
    that file. Ask when you are not sure which tracker is actually alive.
+3. **If the file does not exist, do not create it** — offer `/feature:backlog-init` instead and
+   wait. See the next section.
+
+## An active backlog is opt-in
+
+The backlog exists in a project only once someone has set it up. **`/feature:backlog-init` is the
+only command that creates the file**; nothing else brings a backlog into a project that does not
+have one — not a finding, not `/feature:backlog-add`, not the end of a `/feature:start` run.
+
+**The active backlog is the file itself.** `BACKLOG.md` in the root (or the tracker file the
+project already keeps) exists → the project has a backlog. Nothing exists → it does not, and the
+right move is to offer the init in one sentence, not to create the file.
+
+Two reasons for the switch. A `BACKLOG.md` that turns up in a diff unasked is noise for the
+review, and a project that keeps its work in Jira does not want a second, parallel list of
+tickets — that is the surest way to have both go stale. The backlog is meant for projects
+**without** a tracker; with a tracker, work belongs there, unless the user has explicitly decided
+during the init that they want both (then the header of the file says which goes where).
+
+**What to do when a backlog is not active:**
+
+- Say the finding in the reply — one sentence, as plainly as if the backlog existed.
+- Add: "the project has no backlog; `/feature:backlog-init` sets one up." **Once per
+  conversation**, not with every finding.
+- If the project has Jira, offer a ticket there instead.
+
+## Offering a finding when the backlog is active
+
+With an active backlog, a finding outside the current task is **not a thing to mention in
+passing**. Offer it:
+
+- **At the end of the reply**, after the work itself — never mid-task, and never as a reason to
+  stop what you are doing.
+- **Name the finding in one sentence** with its impact ("`claude_monitor.py` polls once a second
+  even when idle — with 8 sessions it keeps the CPU busy"), plus the priority you would file it
+  at. One line each, several findings as a short list.
+- **Ask whether to file them**, and write only what is approved. The write goes through
+  `/feature:backlog-add`, with everything that entails — a duplicate check first, the claim
+  verified against the code.
+- **Never write without asking.** A backlog that fills up by itself is a backlog whose owner
+  stops reading it. The one exception is an explicit standing instruction from the user in this
+  conversation ("file everything you find").
+- A **two-minute fix while the user is standing right there** is not a ticket. Say so — they may
+  want it now.
+
+The rules in "When to write" decide **what** counts as a finding worth offering. This section
+decides only **how** it gets offered.
 
 ## The file
 

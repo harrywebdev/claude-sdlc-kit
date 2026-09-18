@@ -8,9 +8,9 @@ Show what is waiting in the project's backlog. The format of the file is describ
 
 ## Steps
 
-1. **Read `BACKLOG.md`** in the repository root. If it does not exist, say so in one line and
-   offer `/feature:backlog-add` — do not create an empty file. If the project has a different live
-   tracker, read that one.
+1. **Read `BACKLOG.md`** in the repository root. If it does not exist, say in one line that the
+   project has no backlog and offer `/feature:backlog-init` — do not create an empty file. If the
+   project has a different live tracker, read that one.
 2. With an argument, **filter** the tickets by it (area, file, a word in the title) and say what
    you filtered by.
 3. **Summarize by priority, do not recite.** One line per ticket: number, title and the impact
