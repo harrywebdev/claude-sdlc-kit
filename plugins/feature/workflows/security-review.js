@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'feature-security-review',
+  name: 'security-review',
   description: 'Security review of a feature branch diff through three lenses, every serious finding checked for a real path to exploitation',
   whenToUse: 'Run by step 10 of /feature:start, after documentation. args: {brief, baseBranch, branch} — brief holds only the branches, never the task.',
   phases: [

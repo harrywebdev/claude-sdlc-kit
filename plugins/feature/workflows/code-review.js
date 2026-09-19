@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'feature-code-review',
+  name: 'code-review',
   description: 'Review of a feature branch diff through three lenses, every serious finding refuted',
   whenToUse: 'Run by step 7 of /feature:start. args: {brief, baseBranch, branch} — brief holds the task, the approved plan and the branches, nothing about how development went.',
   phases: [

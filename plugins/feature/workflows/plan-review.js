@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'feature-plan-review',
+  name: 'plan-review',
   description: 'Adversarial review of an implementation plan through three lenses, every blocking finding refuted',
   whenToUse: 'Run by /feature:plan-review and by step 3 of /feature:start. args: {brief} — the task, the plan and baseBranch, nothing about how the plan came about.',
   phases: [

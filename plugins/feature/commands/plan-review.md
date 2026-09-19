@@ -16,12 +16,12 @@ argumentation.
 
 ## Steps
 
-1. **Run the review through the `Workflow` tool** — the script is `feature-plan-review`, which
-   ships with this plugin (`workflows/plan-review.mjs`). These instructions are the explicit opt-in
+1. **Run the review through the `Workflow` tool** — the script is `feature:plan-review`, which
+   ships with this plugin (`workflows/plan-review.js`). These instructions are the explicit opt-in
    that tool asks for, so do not ask the user for it again, and do not review the plan yourself:
 
    ```
-   Workflow({ name: 'feature-plan-review', args: { brief } })
+   Workflow({ name: 'feature:plan-review', args: { brief } })
    ```
 
    `brief` is the reviewer's whole prompt: the **task**, the **plan** (full text or its path) and

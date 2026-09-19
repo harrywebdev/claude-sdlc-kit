@@ -188,12 +188,12 @@ Never skip a step silently and never skip one that was not in the table at the g
 triage either. Otherwise only run the reviewer on cleaned-up code, so the findings are not about
 formatting.
 
-Run the review through the **`Workflow` tool** — the script is `feature-code-review`, which ships
-with this plugin (`workflows/code-review.mjs`). These instructions are the explicit opt-in that
+Run the review through the **`Workflow` tool** — the script is `feature:code-review`, which ships
+with this plugin (`workflows/code-review.js`). These instructions are the explicit opt-in that
 tool asks for, so do not ask the user for it again:
 
 ```
-Workflow({ name: 'feature-code-review', args: { brief, baseBranch, branch } })
+Workflow({ name: 'feature:code-review', args: { brief, baseBranch, branch } })
 ```
 
 - `brief` is the reviewer's whole prompt and contains **only** this: `baseBranch` and `branch`, the
@@ -245,12 +245,12 @@ Here, because now the diff is **complete including documentation** — and docs 
 security surface: examples with a token, ENV values, internal URLs, an instruction that has the
 reader disable a check or commit their `.env`.
 
-- Run the review through the **`Workflow` tool** — the script is `feature-security-review`, which
-  ships with this plugin (`workflows/security-review.mjs`). These instructions are the explicit
+- Run the review through the **`Workflow` tool** — the script is `feature:security-review`, which
+  ships with this plugin (`workflows/security-review.js`). These instructions are the explicit
   opt-in that tool asks for, so do not ask the user for it again:
 
   ```
-  Workflow({ name: 'feature-security-review', args: { brief, baseBranch, branch } })
+  Workflow({ name: 'feature:security-review', args: { brief, baseBranch, branch } })
   ```
 
 - `brief` holds **only** `baseBranch` and `branch` and the instruction that the agent pulls its own
