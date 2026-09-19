@@ -620,6 +620,132 @@ def build_state() -> dict:
     }
 
 
+# --- The project backlog (the `feature` plugin's `backlog` skill describes the file) ---
+# BACKLOG.md is prose, written for a human and for the model; the dashboard only reads
+# it. The structure is small and fixed - `##` is the priority, `###` a ticket - but the
+# words are not: the file is written in the language of the repo, so nothing here
+# matches on a label. `**Foo:** bar` is a field whatever `Foo` happens to say.
+TICKET_RE = re.compile(r"^###\s+([A-Za-z]{1,8}-\d+)\s*[-\u2013\u2014]\s*(.+?)\s*$")
+FIELD_RE = re.compile(r"^\*\*(.+?):\*\*\s*(.*)$")
+LAST_ID_RE = re.compile(r"<!--\s*last-id:\s*([^\s>]+)\s*-->")
+COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+RULE_RE = re.compile(r"^-{3,}$")
+_backlog_cache: dict[str, tuple[float, dict]] = {}
+
+
+def parse_backlog(text: str) -> dict:
+    sections: list[dict] = []
+    ticket: dict | None = None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            sections.append({"title": line[3:].strip(), "tickets": []})
+            ticket = None
+            continue
+        m = TICKET_RE.match(line)
+        if m:
+            if not sections:  # a ticket above any priority heading still has to land
+                sections.append({"title": "", "tickets": []})
+            ticket = {"id": m.group(1), "title": m.group(2), "fields": [], "body": []}
+            sections[-1]["tickets"].append(ticket)
+            continue
+        if ticket is None:
+            continue
+        f = FIELD_RE.match(line.strip())
+        if f:  # a field is a field wherever it sits - `Branch` is appended later
+            ticket["fields"].append([f.group(1), f.group(2)])
+            continue
+        # `<!-- last-id -->` and a `---` rule belong to the file, not to the last
+        # ticket that happens to stand above them. Blank lines stay - they are what
+        # separates the paragraphs.
+        line = COMMENT_RE.sub("", line)
+        if not RULE_RE.match(line.strip()):
+            ticket["body"].append(line)
+    count = 0
+    for sec in sections:
+        for t in sec["tickets"]:
+            t["body"] = "\n".join(t["body"]).strip()
+            count += 1
+    last = LAST_ID_RE.search(text)
+    return {"sections": sections, "count": count,
+            "lastId": last.group(1) if last else None}
+
+
+def read_backlog(path: Path) -> dict | None:
+    """Parsed only when the file has changed - the view is repainted every tick."""
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    hit = _backlog_cache.get(str(path))
+    if not hit or hit[0] != mtime:
+        try:
+            data = parse_backlog(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            return None
+        data["mtime"] = mtime
+        hit = _backlog_cache[str(path)] = (mtime, data)
+    return hit[1]
+
+
+def backlog_root(cwd: str, cache: dict[str, str | None]) -> str | None:
+    """The backlog lives in the repository root, which is not always the session's
+    cwd - so walk up for it, but never out of the repository."""
+    if cwd in cache:
+        return cache[cwd]
+    root, p = None, Path(cwd) if cwd else None
+    while p and p != p.parent:
+        if (p / "BACKLOG.md").is_file():
+            root = str(p)
+            break
+        if (p / ".git").exists():
+            break
+        p = p.parent
+    cache[cwd] = root
+    return root
+
+
+def build_backlog() -> dict:
+    """Only projects that some open session is sitting in - the monitor knows nothing
+    about a repository nobody has a session in, and does not go looking for one."""
+    sessions = agents_json()
+    cache: dict[str, str | None] = {}
+    projects: dict[str, dict] = {}
+    for s in sessions:
+        root = backlog_root(s.get("cwd", ""), cache)
+        if not root or root in projects:
+            continue
+        open_ = read_backlog(Path(root) / "BACKLOG.md")
+        if not open_:
+            continue
+        projects[root] = {
+            "name": os.path.basename(root) or root,
+            "root": root,
+            "open": open_,
+            "done": read_backlog(Path(root) / "BACKLOG.done.md"),
+        }
+    return {
+        "now": time.time(),
+        "waiting": waiting_count(sessions),
+        "projects": sorted(projects.values(), key=lambda p: p["name"]),
+    }
+
+
+def waiting_count(sessions: list[dict]) -> int:
+    """The `needs you` count without scanning a single transcript - the backlog view
+    has no session cards, but the tab title still has to warn."""
+    k = 0
+    for s in sessions:
+        sid = s.get("sessionId", "")
+        path = transcript(sid)
+        try:
+            mtime = os.stat(path).st_mtime if path else 0
+        except OSError:
+            mtime = 0
+        if attention(s, sid, mtime):
+            k += 1
+    return k
+
+
 PAGE = r"""<!doctype html>
 <meta charset="utf-8"><title>Claude agents</title>
 <style>
@@ -627,6 +753,7 @@ PAGE = r"""<!doctype html>
       --busy:#f0906a;--idle:#7cc292;--warn:#e0a94a;--bar:#d97757;--bar2:#3d3936;
       --att:#ffb02e}
 *{box-sizing:border-box}
+[hidden]{display:none!important}  /* .kpis/.grid set display, which beats the UA rule */
 body{margin:0;padding:18px;background:var(--bg);color:var(--fg);
      font:14px/1.45 ui-sans-serif,-apple-system,system-ui,sans-serif}
 h1{font-size:16px;margin:0 0 2px;font-weight:650}
@@ -712,12 +839,49 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 @keyframes blink{50%{opacity:.4}}
 .ver{position:absolute;top:18px;right:18px;color:var(--dim);font-size:11px;
      font-variant-numeric:tabular-nums}
+.tabs{display:inline-flex;gap:6px;margin-bottom:14px}
+.tab{background:none;border:1px solid var(--line);border-radius:6px;color:var(--dim);
+     font:inherit;font-size:12px;padding:3px 10px;cursor:pointer}
+.tab:hover{border-color:var(--dim);color:var(--fg)}
+.tab.on{border-color:var(--bar);color:var(--fg)}
+/* the backlog: a list to scan on the left, one ticket open on the right - a ticket is
+   several paragraphs of prose, so cards side by side turn into a wall of text */
+.bl{display:grid;gap:16px;grid-template-columns:minmax(260px,360px) 1fr;align-items:start}
+@media (max-width:820px){.bl{grid-template-columns:1fr}}
+.bl .meta{margin-bottom:8px}
+.grp{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--dim);
+     font-weight:600;margin:12px 0 4px}
+.grp:first-child{margin-top:0}
+.tr{display:flex;gap:8px;padding:3px 7px;border-radius:6px;cursor:pointer;
+    border:1px solid transparent}
+.tr:hover{background:var(--card)}
+.tr.on{background:var(--card);border-color:var(--bar)}
+.tr.done{opacity:.5}
+.tr .id{color:var(--bar);font-variant-numeric:tabular-nums;flex:none;font-size:12.5px}
+.tr .ti{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.tk{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+    position:sticky;top:18px}
+.tk-h{font-weight:600;font-size:15px;margin-bottom:6px}
+.tk-id{color:var(--bar);font-variant-numeric:tabular-nums;margin-right:6px}
+.tk-f{font-size:12.5px;color:var(--dim)}
+.tk-f b{color:var(--fg);font-weight:550}
+.tk-b{font-size:13px;color:var(--dim);margin-top:8px;max-width:78ch}
+.tk-b p{margin:0 0 8px}
+.tk-b pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;
+          overflow-x:auto;font-size:11.5px;margin:0 0 8px}
+.tk-b code,.tk-f code{background:var(--bar2);border-radius:4px;padding:0 3px;font-size:11.5px}
+.bl-none{color:var(--dim);font-size:13px}
 </style>
 <div class="ver">__VERSION__</div>
 <h1>Claude agents dashboard</h1>
 <div class="sub" id="sub">loading…</div>
+<div class="tabs">
+  <button class="tab on" data-v="sessions" onclick="setView('sessions')">sessions</button>
+  <button class="tab" data-v="backlog" onclick="setView('backlog')">backlog</button>
+</div>
 <div class="kpis" id="kpis"></div>
 <div class="grid" id="grid"></div>
+<div id="backlog" hidden></div>
 <script>
 const n = v => v >= 1e6 ? (v/1e6).toFixed(2)+"M" : v >= 1e3 ? Math.round(v/1e3)+"k" : String(v||0);
 const dur = s => s < 60 ? Math.round(s)+" s" : s < 3600 ? Math.round(s/60)+" min"
@@ -874,15 +1038,109 @@ function card(s, now){
   </div>`;
 }
 
+// The backlog is the same file the model reads - a ticket is prose, so render it as
+// prose. No labels are hardcoded: whatever `**Foo:**` the file uses is what shows up.
+const md = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>")
+                      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+
+// Line by line, because a ``` fence is not always surrounded by blank lines - and an
+// inline-code regex let loose across one swallows the rest of the ticket.
+function body(t){
+  const out = [];
+  let para = [], pre = null;
+  const flush = () => { if(para.length){ out.push(`<p>${md(para.join(" "))}</p>`); para = []; } };
+  for(const line of t.body.split("\n")){
+    if(line.trimStart().startsWith("```")){
+      if(pre === null){ flush(); pre = []; }
+      else { out.push(`<pre>${esc(pre.join("\n"))}</pre>`); pre = null; }
+      continue;
+    }
+    if(pre !== null) pre.push(line);
+    else if(line.trim()) para.push(line.trim());
+    else flush();
+  }
+  if(pre !== null) out.push(`<pre>${esc(pre.join("\n"))}</pre>`);  // unclosed fence
+  flush();
+  return out.join("");
+}
+
+function detail(t){
+  return `<div class="tk"><div class="tk-h"><span class="tk-id">${esc(t.id)}</span>${
+    esc(t.title)}</div>`
+    + t.fields.map(f => `<div class="tk-f"><b>${esc(f[0])}</b> ${md(f[1])}</div>`).join("")
+    + (t.body ? `<div class="tk-b">${body(t)}</div>` : "")
+    + `</div>`;
+}
+
+// which project and which ticket are open; the board is repainted on every tick, so
+// neither can live in the DOM
+let blProj = null, blSel = null;
+
+function board(d){
+  if(!d.projects.length) return `<div class="bl-none">No open session sits in a project
+    with a <code>BACKLOG.md</code>. <code>/feature:backlog-init</code> sets one up.</div>`;
+  let p = d.projects.find(x => x.root === blProj);
+  if(!p){ p = d.projects[0]; blProj = p.root; blSel = null; }
+  const groups = p.open.sections.map(s => [s.title, s.tickets, false]);
+  if(p.done && p.done.count)  // closed tickets stay reachable, just dimmed and last
+    groups.push(["closed", p.done.sections.flatMap(s => s.tickets), true]);
+  const all = groups.flatMap(g => g[1]);
+  if(!all.some(t => t.id === blSel)) blSel = all.length ? all[0].id : null;
+  const picker = d.projects.length > 1
+    ? `<div class="tabs">` + d.projects.map(x => `<button class="tab${
+        x.root === blProj ? " on" : ""}" data-root="${esc(x.root)}" title="${esc(x.root)}">${
+        esc(x.name)} &middot; ${x.open.count}</button>`).join("") + `</div>`
+    : "";
+  const list = groups.map(([title, ts, done]) => `<div class="grp">${esc(title)} &middot; ${
+    ts.length}</div>` + ts.map(t => `<div class="tr${t.id === blSel ? " on" : ""}${
+      done ? " done" : ""}" data-id="${esc(t.id)}" title="${esc(t.title)}"><span class="id">${esc(t.id)}</span>
+      <span class="ti">${esc(t.title)}</span></div>`).join("")).join("");
+  const sel = all.find(t => t.id === blSel);
+  return picker + `<div class="bl"><div><div class="meta">${p.open.count} open${
+      p.open.lastId ? " &middot; last id " + esc(p.open.lastId) : ""} &middot; ${esc(p.root)}</div>
+      ${list}</div><div>${sel ? detail(sel) : ""}</div></div>`;
+}
+
+document.getElementById("backlog").addEventListener("click", ev => {
+  const proj = ev.target.closest("button[data-root]");
+  if(proj){ blProj = proj.dataset.root; blSel = null; tick(); return; }
+  const row = ev.target.closest(".tr");
+  if(row){ blSel = row.dataset.id; tick(); }
+});
+
+// which view is painted; the sessions grid and the backlog never show at once - with
+// eight sessions the board would be a scroll away, which is not a board
+let view = "sessions";
+function setView(v){
+  view = v;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  document.getElementById("kpis").hidden = v !== "sessions";
+  document.getElementById("grid").hidden = v !== "sessions";
+  document.getElementById("backlog").hidden = v !== "backlog";
+  tick();
+}
+
+function stamp(){
+  document.getElementById("sub").innerHTML =
+    "updated " + new Date().toLocaleTimeString() + " · auto-refresh "
+    + `<button class="iv" onclick="cycleRefresh()" title="click to change the interval">`
+    + INTERVALS[ivIdx][1] + `</button>`;
+}
+
+async function tickBacklog(){
+  const d = await (await fetch("/api/backlog")).json();
+  stamp();
+  document.getElementById("backlog").innerHTML = board(d);
+  document.title = (d.waiting ? `(${d.waiting}) ` : "") + "Claude agents";
+}
+
 async function tick(){
   try {
+    if(view === "backlog"){ await tickBacklog(); return; }
     const d = await (await fetch("/api/state")).json();
     const T = d.totals, now = d.now;
     const U = d.usage;
-    document.getElementById("sub").innerHTML =
-      "updated " + new Date().toLocaleTimeString() + " · auto-refresh "
-      + `<button class="iv" onclick="cycleRefresh()" title="click to change the interval">`
-      + INTERVALS[ivIdx][1] + `</button>`;
+    stamp();
     document.getElementById("kpis").innerHTML =
       planKpis(U, now)
       + kpi(T.sessions, "sessions") + kpi(T.busy, "busy")
@@ -916,6 +1174,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/state"):
             with _lock:
                 body = json.dumps(build_state()).encode()
+            ctype = "application/json"
+        elif self.path.startswith("/api/backlog"):
+            with _lock:
+                body = json.dumps(build_backlog()).encode()
             ctype = "application/json"
         elif self.path in ("/", "/index.html"):
             body, ctype = PAGE.encode(), "text/html; charset=utf-8"

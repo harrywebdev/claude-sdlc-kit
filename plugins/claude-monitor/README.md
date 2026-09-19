@@ -137,6 +137,29 @@ Nothing is written anywhere for this. No state file in your project, no record i
 read-only summary of the subagent tree right below it, grouped by step. So it cannot fall out
 of step with reality: it shows what ran, and about everything else it says nothing.
 
+## The backlog board
+
+The second view, behind the `backlog` tab next to the title: the project's `BACKLOG.md` as a
+list to scan on the left — id and title, grouped by priority in the order the file has them,
+with the closed tickets from `BACKLOG.done.md` dimmed at the end — and the ticket you click open
+on the right, in full. A ticket is several paragraphs of prose, so cards side by side turn into
+a wall of text; one open at a time is what makes a list of fifteen readable. The view is
+**read-only**: tickets are added and closed by the `feature` plugin's commands, and this only
+saves you reading the markdown.
+
+More than one project with a backlog → a row of buttons above the list picks one, `name · open
+count` each. Which project and which ticket are open live in the page, not in the DOM, so the
+3 s repaint does not throw the selection away.
+
+The board shows the projects that an **open session is sitting in** — the monitor does not go
+looking around the disk. The file is searched for upwards from the session's `cwd` and never
+outside the repository, because the backlog lives in the repository root and a session often
+sits deeper.
+
+Nothing in the parser is hardcoded to English: `##` is a priority, `###` a ticket, and a
+`**Foo:** bar` line is a field whatever `Foo` says — the backlog is written in the language of
+the repo, and headings and fields come out of the file as they are.
+
 ## Data sources
 
 | What | From where |
@@ -150,6 +173,7 @@ of step with reality: it shows what ran, and about everything else it says nothi
 | the reason for waiting on the user | `hooks/notification.py` → `~/.claude/monitor/notify/<sessionId>.json` |
 | that `/feature:start` is running | the `<command-name>/feature:start` marker in the transcript |
 | the `/feature:start` step row | `<sessionId>/subagents/agent-*.meta.json` → `agentType`, and `VERDICT:` out of the agent's last message in `agent-*.jsonl` |
+| the backlog board | `BACKLOG.md` + `BACKLOG.done.md` in the repository root of an open session's `cwd` (parsed only when the file changes) |
 | the app hosting a session | `ps -Ao pid,ppid,tty,command` — one call per refresh, the parent chain is walked in memory |
 
 Transcripts are read incrementally (the offset is remembered), so a refresh costs the same
