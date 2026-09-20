@@ -19,9 +19,9 @@ můžou být něco, co do repa patří. Je to rozhodnutí, co se verzuje, ne ř�
 **Hotovo když:** `git add -A` nemůže publikovat lokální cesty ani snapshoty z prohlížeče,
 a to, co se verzovat má, verzované zůstane
 
-**Řešení:** `.gitignore` rozšířený o `.claude/settings.local.json` a `.playwright-mcp/`.
-Ignoruje se jen soubor s lokálním nastavením, ne celý `.claude/` — plány v `.claude/plans/`
-tak zůstávají verzovatelné, jak ticket žádal.
+**Řešení:** `.gitignore` rozšířený o `.claude/` a `.playwright-mcp/`. Rozhodnutí, které
+ticket nechával otevřené, padlo na ignorování celého `.claude/` — plány v `.claude/plans/`
+se tedy neverzují, jsou to lokální pracovní materiály.
 
 ### BL-8 — Přepnutí view zhasne vybraný projekt v backlogu
 **Closed:** 2026-09-20 · done · main
