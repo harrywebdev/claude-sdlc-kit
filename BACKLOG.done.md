@@ -3,6 +3,26 @@
 Tickety, které opustily `BACKLOG.md`. Nejnovější nahoře. Nic z toho není práce,
 která by čekala na udělání.
 
+### BL-7 — `.gitignore` nepokrývá `.claude/` ani `.playwright-mcp/`
+**Closed:** 2026-09-20 · done · main
+**Oblast:** dluh · .gitignore
+
+`.gitignore` drží jen `.DS_Store` a `__pycache__/`, ale v pracovním stromu sedí
+neignorované `.claude/` (plány a `settings.local.json` s absolutními cestami domovského
+adresáře) a `.playwright-mcp/` (snapshoty stránek a konzolové logy z ověřování
+v prohlížeči — vykreslený dashboard obsahuje absolutní cesty projektů i výstup agentů).
+`origin` je veřejný GitHub, takže jediný `git add -A` to publikuje.
+
+**Pozor:** `.claude/` se nedá ignorovat celé bez rozmyslu — plány v `.claude/plans/`
+můžou být něco, co do repa patří. Je to rozhodnutí, co se verzuje, ne řádek k zametení.
+
+**Hotovo když:** `git add -A` nemůže publikovat lokální cesty ani snapshoty z prohlížeče,
+a to, co se verzovat má, verzované zůstane
+
+**Řešení:** `.gitignore` rozšířený o `.claude/settings.local.json` a `.playwright-mcp/`.
+Ignoruje se jen soubor s lokálním nastavením, ne celý `.claude/` — plány v `.claude/plans/`
+tak zůstávají verzovatelné, jak ticket žádal.
+
 ### BL-8 — Přepnutí view zhasne vybraný projekt v backlogu
 **Closed:** 2026-09-20 · done · main
 **Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py

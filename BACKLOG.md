@@ -68,19 +68,4 @@ porovnat je proti čemu.
 **Hotovo když:** `/api/focus` přijme jen takové `cwd`, které server sám vypsal mezi
 session, a odmítnutí vrátí `{"ok": false, "error": ...}` jako ostatní chyby
 
-### BL-7 — `.gitignore` nepokrývá `.claude/` ani `.playwright-mcp/`
-**Oblast:** dluh · .gitignore
-
-`.gitignore` drží jen `.DS_Store` a `__pycache__/`, ale v pracovním stromu sedí
-neignorované `.claude/` (plány a `settings.local.json` s absolutními cestami domovského
-adresáře) a `.playwright-mcp/` (snapshoty stránek a konzolové logy z ověřování
-v prohlížeči — vykreslený dashboard obsahuje absolutní cesty projektů i výstup agentů).
-`origin` je veřejný GitHub, takže jediný `git add -A` to publikuje.
-
-**Pozor:** `.claude/` se nedá ignorovat celé bez rozmyslu — plány v `.claude/plans/`
-můžou být něco, co do repa patří. Je to rozhodnutí, co se verzuje, ne řádek k zametení.
-
-**Hotovo když:** `git add -A` nemůže publikovat lokální cesty ani snapshoty z prohlížeče,
-a to, co se verzovat má, verzované zůstane
-
 <!-- last-id: BL-10 -->
