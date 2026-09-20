@@ -25,38 +25,100 @@ sám stav v proměnné nestačí, jak to má fold KPI nebo výběr ticketu v bac
 umí tmavý/světlý/podle systému, volba přežije reload a ve světlém režimu je
 čitelná i oranžová karta `needs you`, plan tiles a stavové pilulky
 
-### BL-2 — Z backlog boardu nejde ticket rovnou rozjet
+### BL-3 — Refresh stránky vždy zahodí rozdělaný pohled
 **Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py
 
-Board v dashboardu ticket jen ukazuje. Kdo ho chce vzít, musí přepnout do terminálu,
-trefit správné okno se správným projektem a ručně opsat `/feature:start BL-<n>` —
-číslo je na druhé obrazovce, takže právě u něj se dělá překlep. Čtení a spuštění
-jsou přitom dva kroky téže věci.
+Který view je vykreslený, drží obyčejná proměnná `let view = "sessions"` a vybraný projekt
+s tiketem `let blProj = null, blSel = null`. V celém souboru není ani jeden zápis do
+`localStorage` nebo do URL, takže každé F5 — i to, které si vynutí sám dashboard po restartu
+serveru — hodí člověka zpátky na sessions a v backlogu na první projekt a první tiket.
+Kdo board používá, musí po každém refreshi znovu naklikat tab, projekt a tiket, který právě četl.
 
-Cesty, které stojí za prověření (rozhodnout jednu, ne postavit všechny):
-1. **Tlačítko „copy“** v detailu ticketu — `navigator.clipboard.writeText()`, dashboard
-   běží na `127.0.0.1`, což je secure context, takže API je dostupné. Nejlacinější,
-   vložení do terminálu zůstává na člověku.
-2. **Focus + vložení do běžící session** — `/api/focus` už umí najít okno i záložku
-   terminálu podle tty (`focus()`, `tab_script()`), takže by stačilo doplnit keystroke.
-   Jenže to chce Accessibility oprávnění a zapsat příkaz do session, která zrovna něco
-   dělá, je rychlá cesta ke ztracenému promptu — bez kontroly `idle`/`needs you` ne.
-3. **Nová session v rootu projektu** — `osascript`/`open` otevře terminál v `p.root`
-   a spustí `claude "/feature:start BL-<n>"`. Do ničeho běžícího nezasahuje, ale je to
-   první místo, kde dashboard spouští proces, ne jen čte soubory.
-4. **Mimo UI** — `/feature:backlog-list` a detail ticketu můžou hotový příkaz rovnou
-   vypsat jako text k označení; nic nového se nestaví a překlep zmizí taky.
+Stejnou vadu mají i ostatní volby v hlavičce: `ivIdx` (interval auto-refreshe) a fold KPI
+se resetují úplně stejně.
 
-**Pozor:** board se překresluje celým `innerHTML` při každém ticku, takže stav tlačítka
-(„zkopírováno“) v DOMu nepřežije — musí ven vedle `blProj`/`blSel`, stejně jako výběr
-ticketu. A jakmile se přidá POST, který něco spouští, přestává být server read-only:
-`/api/focus` dnes umí jen přepnout okno, kdežto krok 2 a 3 znamenají spuštění příkazu
-z HTTP requestu — i na loopbacku to chce vědomé rozhodnutí, ne přílepek k boardu.
+**Pozor:** stav nesmí skončit v DOMu — board i grid se překreslují celým `innerHTML` při
+každém ticku. Patří vedle `blProj`/`blSel` a do `localStorage`, ať to funguje stejně jako
+přepínač režimu v BL-1. Obnovený `blProj` navíc nemusí odpovídat žádnému otevřenému
+projektu (session mezitím skončila) a `blSel` žádnému existujícímu tiketu — `board()` už
+dnes umí spadnout zpátky na první položku, ale ten fallback musí zabrat i pro hodnotu
+načtenou z úložiště, ne jen pro `null`.
 
-**Hotovo když:** z otevřeného ticketu v boardu jde `/feature:start BL-<n>` rozjet jedním
-úkonem bez ručního opisování ID, zvolená cesta je popsaná v README claude-monitoru
-a nic se nezapíše do běžící session bez toho, aby to člověk viděl
+**Hotovo když:** po refreshi zůstane otevřený stejný view, a v backlogu i stejný projekt
+a tiket; neplatný uložený projekt nebo tiket dashboard tiše přepne na první existující místo
+toho, aby zůstal prázdný
+
+### BL-4 — `/feature:start --yolo` pro běh bez odklikávání
+**Oblast:** DX · plugins/feature/commands/start.md
+
+Workflow se dnes zastaví u člověka nejmíň pětkrát: potvrzení zadání (krok 1), volba base
+branche, když má repo `develop` i `main` (krok 2), brána nad plánem a složením kroků
+(krok 3, `AskUserQuestion`), schválení založení tiketů do backlogu u nálezů mimo rozsah
+(krok 8) a konzultace (krok 11). Kdo pouští malý tiket z backlogu, kde je zadání i
+`Hotovo když` napsané předem, proklikává pět dialogů jen aby odsouhlasil to, co mu workflow
+samo navrhlo. `--fast` na tom nic nemění — podle ř. 129 jen předvyplňuje návrh, samotné
+potvrzení nenahrazuje.
+
+Chybí flag `--yolo`, který u každé takové brány vezme doporučenou variantu (u kroku 3 ten
+jeden klik na vlastní návrh) a jede dál.
+
+**Pozor:** flag nesmí sáhnout na dva druhy bran. Za prvé na pravidla z ř. 312–314 — commit,
+push a PR se bez výslovného souhlasu nedělají ani s `--yolo`; jinak z toho není zrychlení,
+ale ztráta kontroly nad tím, co skončí v origin. Za druhé na diskvalifikátory z ř. 67–71
+(auth, tajemství, nedůvěřený vstup, endpointy, závislosti, migrace, platby, CI/CD) — tam se
+i dnes u `--fast` má pojmenovat důvod a **zeptat se**, a `--yolo` to musí respektovat stejně.
+Musí být taky jasné, co dělá se zastávkami, které nejsou schvalovací, ale záchytné: špinavý
+pracovní strom (krok 2) nebo opakovaný `FAIL` z E2E kvůli cizímu bugu (ř. 316) jsou stop,
+ne rozhodovačka. A flag patří do `argument-hint` v hlavičce, jinak ho nikdo nenajde.
+
+**Hotovo když:** `/feature:start BL-<n> --yolo` doběhne od zadání až po hotový diff bez
+jediného dotazu na uživatele, u brány v kroku 3 zvolí vlastní návrh a napíše do odpovědi,
+co tím schválil; commit, push ani PR nevznikne bez samostatného souhlasu; přítomnost
+diskvalifikátoru se pojmenuje a zeptá se navzdory flagu; chování je popsané v sekci
+o flagách v `start.md` včetně výčtu toho, co `--yolo` neobchází
 
 ## Nízká priorita
 
-<!-- last-id: BL-2 -->
+### BL-6 — `focus()` nevaliduje `cwd` z requestu
+**Oblast:** bezpečnost · plugins/claude-monitor/tools/claude_monitor.py
+
+`focus()` předá `cwd` z těla POSTu rovnou do `_run(["open", "-a", app, cwd])` (ř. 439).
+Žádný shell v tom není, takže o injection nejde, ale je to jediná hodnota z requestu,
+která se v celém souboru používá jako cesta — a `cwd` začínající pomlčkou `open`
+rozparsuje jako přepínač, ne jako cestu. Server přitom `cwd` všech session zná, takže
+porovnat je proti čemu.
+
+**Hotovo když:** `/api/focus` přijme jen takové `cwd`, které server sám vypsal mezi
+session, a odmítnutí vrátí `{"ok": false, "error": ...}` jako ostatní chyby
+
+### BL-7 — `.gitignore` nepokrývá `.claude/` ani `.playwright-mcp/`
+**Oblast:** dluh · .gitignore
+
+`.gitignore` drží jen `.DS_Store` a `__pycache__/`, ale v pracovním stromu sedí
+neignorované `.claude/` (plány a `settings.local.json` s absolutními cestami domovského
+adresáře) a `.playwright-mcp/` (snapshoty stránek a konzolové logy z ověřování
+v prohlížeči — vykreslený dashboard obsahuje absolutní cesty projektů i výstup agentů).
+`origin` je veřejný GitHub, takže jediný `git add -A` to publikuje.
+
+**Pozor:** `.claude/` se nedá ignorovat celé bez rozmyslu — plány v `.claude/plans/`
+můžou být něco, co do repa patří. Je to rozhodnutí, co se verzuje, ne řádek k zametení.
+
+**Hotovo když:** `git add -A` nemůže publikovat lokální cesty ani snapshoty z prohlížeče,
+a to, co se verzovat má, verzované zůstane
+
+### BL-8 — Přepnutí view zhasne vybraný projekt v backlogu
+**Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py
+
+`setView()` dělá `querySelectorAll(".tab").forEach(b => b.classList.toggle("on",
+b.dataset.v === v))`. Přepínače projektů nad backlog seznamem mají taky třídu
+`tab`, ale žádné `data-v`, takže každé přepnutí view sundá zvýraznění vybranému projektu.
+Vrátí se až při dalším překreslení o 3 s později — vybraný projekt se přitom nemění, jen
+přestane být vidět.
+
+**Pozor:** třídu `tab` sdílejí obojí už delší dobu, ale obsluha kliků na boardu na tom
+názvu teď staví (`.tab[data-root]`), takže případné oddělení tříd musí projít oběma místy.
+
+**Hotovo když:** přepnutí sessions ↔ backlog nechá zvýrazněný projekt zvýrazněný
+
+
+<!-- last-id: BL-9 -->

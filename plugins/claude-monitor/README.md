@@ -101,9 +101,9 @@ The second view, behind the `backlog` tab next to the title: the project's `BACK
 list to scan on the left — id and title, grouped by priority in the order the file has them,
 with the closed tickets from `BACKLOG.done.md` dimmed at the end — and the ticket you click open
 on the right, in full. A ticket is several paragraphs of prose, so cards side by side turn into
-a wall of text; one open at a time is what makes a list of fifteen readable. The view is
-**read-only**: tickets are added and closed by the `feature` plugin's commands, and this only
-saves you reading the markdown.
+a wall of text; one open at a time is what makes a list of fifteen readable. Tickets are still
+added and closed by the `feature` plugin's commands — what the board adds is the command that
+takes one up, without retyping its id into the right window.
 
 More than one project with a backlog → a row of buttons above the list picks one, `name · open
 count` each. Which project and which ticket are open live in the page, not in the DOM, so the
@@ -118,6 +118,61 @@ Nothing in the parser is hardcoded to English: `##` is a priority, `###` a ticke
 `**Foo:** bar` line is a field whatever `Foo` says — the backlog is written in the language of
 the repo, and headings and fields come out of the file as they are.
 
+### Taking a ticket up
+
+The open ticket carries a `copy` button in its top right corner, and a second one when there is
+a window to raise:
+
+| Button | What it does |
+|---|---|
+| `copy` | puts `/feature:start BL-7` on the clipboard — you paste it into a terminal yourself, nothing leaves the page |
+| `↗ <app>` | raises the window of a session already sitting in that project — the same `POST /api/focus` the session cards use, and like them it is not rendered under `tmux` or over ssh |
+
+The dashboard stays a **reader**. It never types into a running session and it never starts
+one — launching a feature belongs in a terminal you are looking at, not in an HTTP request.
+The clipboard is where the board stops and you take over.
+
+A ticket somebody is already on **spins** in the list. The monitor works that out without any
+agreement about field names: it compares the branch the project's worktree is on against the
+values of the ticket's fields, and a ticket is live when one of them *is* that branch — not
+merely mentions it, or a ticket warning you to keep `main` green would claim to be in progress.
+
+The closed tickets are left out of that search: one cannot be in progress, and it moves to
+`BACKLOG.done.md` verbatim — `Branch` line and all, so checking out a merged branch nobody
+deleted would light the finished ticket up again.
+
+The buttons report back **in place** — `✓ copied`, `✓`, or the error — which is more than the
+session cards do, as those only ever show a failure. The board is repainted wholesale every
+3 s, so the message lives in a page variable next to the selection, not in the DOM where the
+next tick would eat it.
+
+## Who may talk to the server
+
+The server is bound to the loopback, and that on its own settles less than it looks: a page on
+`evil.tld` whose name has been made to resolve to `127.0.0.1` stays on its own origin,
+`http://evil.tld:<port>` — rebinding merely points that name at the loopback socket — so an
+`Origin` check would not stop it and no CORS header of ours is ever consulted. The `Host` is
+what gives it away, so every route, the page included, requires a `Host` of the dashboard's
+own — `127.0.0.1:<port>` or `localhost:<port>`, and nothing else (on `--port 80` the bare
+`127.0.0.1` and `localhost` too, as a browser leaves out the scheme's default port). That is
+the check that breaks **DNS rebinding**, and it has to cover the reads.
+
+Those reads are not a small matter. `/api/state` hands out the absolute path of every project
+on the machine, the branch each one is on, session pids, and — for a session waiting on you —
+why it is waiting and the last thing it said; `/api/backlog` adds the full prose of every
+backlog found, which of its tickets are being worked on, and the pid and `cwd` of a session
+sitting there. `POST /api/focus` is the only route that acts on the machine rather than
+reporting on it, and it adds two legs: `Content-Type` has to be `application/json`, which makes
+the request non-simple, so a cross-origin attempt needs a preflight this server does not
+answer, and `Origin`/`Sec-Fetch-Site`, when present, has to be same-origin. Anything else is a
+`403`.
+
+The gate authorizes **by origin, never by identity** — there is no token and no login. It asks
+where a request comes from, which a *web page* cannot lie about; a program on the machine can.
+Any other local account able to open a socket to the port reads the whole state and can raise
+windows on your screen. The assumed deployment is a **single-user machine**; on a shared one, do
+not run the dashboard (`CLAUDE_MONITOR_AUTOSTART=0`).
+
 ## Data sources
 
 | What | From where |
@@ -130,6 +185,7 @@ the repo, and headings and fields come out of the file as they are.
 | restart + URL into the session | `hooks/session-start.sh` → `tools/restart.sh` (SessionStart hook) |
 | the reason for waiting on the user | `hooks/notification.py` → `~/.claude/monitor/notify/<sessionId>.json` |
 | the backlog board | `BACKLOG.md` + `BACKLOG.done.md` in the repository root of an open session's `cwd` (parsed only when the file changes) |
+| which ticket is being worked on | `git branch --show-current` in each backlog project's root, matched against the ticket's field values (backticks stripped, compared whole) |
 | the app hosting a session | `ps -Ao pid,ppid,tty,command` — one call per refresh, the parent chain is walked in memory |
 
 Transcripts are read incrementally (the offset is remembered), so a refresh costs the same
@@ -151,3 +207,18 @@ whether the file is small or several megabytes.
   the same folder therefore focus the same window.
 - A branch belongs to the **worktree, not the session** — several sessions in one directory are
   always on the same branch, and a `checkout` in one switches the branch for all the others.
+- The spinner marking a ticket as taken up needs the ticket to **carry its branch in a field**.
+  `/feature:start` writes that line when it creates the branch; a ticket started by hand, or one
+  filed before that was the habit, stays unmarked — the board just does not know.
+- Every route, the page included, requires a `Host` of exactly **`127.0.0.1:<port>` or
+  `localhost:<port>`** — on `--port 80` the bare `127.0.0.1` or `localhost` as well, because
+  the browser omits the scheme's default port. That is what stops DNS rebinding, and it has no
+  exceptions. Reaching the dashboard under any other name for the loopback (a `/etc/hosts`
+  alias, the machine's own hostname, an ssh tunnel or proxy that passes its own `Host` through)
+  gets a bare `403` rather than a page. Over ssh, forward it to **your own loopback only** —
+  `ssh -L 127.0.0.1:8787:127.0.0.1:8787 <host>` — and open it as `localhost`. Never `-g`, never
+  `GatewayPorts yes`, never `-L '*:8787:...'`: the forward satisfies the **only** access control
+  this server has, and it authorizes by origin, not by identity. Whoever reaches the far end of
+  a forward opened to the LAN reads every project path, branch, backlog and session `pid`/`cwd`
+  on your machine, and gets an unauthenticated `POST /api/focus` with it. Take the tunnel down
+  when you are done.

@@ -54,6 +54,7 @@ LIMIT_LABELS = {"session": "session (5 h)", "weekly_all": "week, all models",
 # the KPI tile is narrow - the long label only survives in the tooltip
 SHORT_LABELS = {"session": "5 h", "weekly_all": "week all", "weekly_scoped": "week"}
 
+_ORIGINS: set[str] = set()  # the `Host` values the page may carry, filled in by main()
 _cache: dict[str, dict] = {}
 _usage: dict = {"mtime": 0.0, "data": None}
 _lock = threading.Lock()
@@ -603,29 +604,64 @@ def backlog_root(cwd: str, cache: dict[str, str | None]) -> str | None:
     return root
 
 
+def live_tickets(open_: dict, branch: str | None) -> list[str]:
+    """Ids of the open tickets somebody is sitting on right now - the ones carrying a field
+    whose value *is* the branch the worktree is on (`**Branch:** feature/BL-7-x`, backticks
+    allowed). Not a field that merely mentions it: `parse_backlog` calls every `**Foo:** bar`
+    line a field, prose included, so a ticket warning that "merge do `main` must stay green"
+    would otherwise claim to be in progress the moment anybody sits on `main`.
+
+    The flag is returned beside the tickets, never written into them: `read_backlog` hands
+    out the very dict it keeps in `_backlog_cache`, so a flag set once would outlive the
+    branch - and mutating it would race the `json.dumps` the GET path runs under the lock.
+
+    `BACKLOG.done.md` is deliberately not searched: a closed ticket cannot be in progress,
+    and it keeps its `Branch` field when it moves to the archive - so a merged branch nobody
+    has deleted yet would light up the ticket it finished."""
+    if not branch:
+        return []
+    return [t["id"] for sec in open_["sections"] for t in sec["tickets"]
+            if any(v.replace("`", "").strip() == branch for _, v in t["fields"])]
+
+
 def build_backlog() -> dict:
     """Only projects that some open session is sitting in - the monitor knows nothing
     about a repository nobody has a session in, and does not go looking for one."""
     sessions = agents_json()
     cache: dict[str, str | None] = {}
-    projects: dict[str, dict] = {}
+    groups: dict[str, list[dict]] = {}
     for s in sessions:
         root = backlog_root(s.get("cwd", ""), cache)
-        if not root or root in projects:
-            continue
+        if root:  # grouped, not first-wins - a repo often has more than one session
+            groups.setdefault(root, []).append(s)
+
+    procs = proc_table() if groups else {}
+    projects = []
+    for root, group in groups.items():
         open_ = read_backlog(Path(root) / "BACKLOG.md")
         if not open_:
             continue
-        projects[root] = {
+        done = read_backlog(Path(root) / "BACKLOG.done.md")
+        # one branch per project, not per session: the sessions of a group share a root,
+        # a root sits in one worktree, and a branch belongs to the worktree
+        branch = git_branch(root, {})
+        live = live_tickets(open_, branch)
+        # any session a terminal app owns will do for the focus button - they are all in
+        # the same directory. Under tmux or over ssh no app owns one, and there is none.
+        pick = next(((s, h) for s in group if (h := host(s.get("pid"), procs))), None)
+        projects.append({
             "name": os.path.basename(root) or root,
             "root": root,
             "open": open_,
-            "done": read_backlog(Path(root) / "BACKLOG.done.md"),
-        }
+            "done": done,
+            "live": live,
+            "session": {"pid": pick[0].get("pid"), "cwd": pick[0].get("cwd", ""),
+                        "host": pick[1]["app"]} if pick else None,
+        })
     return {
         "now": time.time(),
         "waiting": waiting_count(sessions),
-        "projects": sorted(projects.values(), key=lambda p: p["name"]),
+        "projects": sorted(projects, key=lambda p: p["name"]),
     }
 
 
@@ -748,9 +784,12 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .tr.done{opacity:.5}
 .tr .id{color:var(--bar);font-variant-numeric:tabular-nums;flex:none;font-size:12.5px}
 .tr .ti{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.tr .spin{color:var(--busy);flex:none;align-self:center;margin:0}
 .tk{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
     position:sticky;top:18px}
-.tk-h{font-weight:600;font-size:15px;margin-bottom:6px}
+.tk-h{font-weight:600;font-size:15px;margin-bottom:6px;display:flex;align-items:baseline;gap:8px}
+.tk-t{flex:1}
+.tk-act{display:flex;gap:5px;flex:none}
 .tk-id{color:var(--bar);font-variant-numeric:tabular-nums;margin-right:6px}
 .tk-f{font-size:12.5px;color:var(--dim)}
 .tk-f b{color:var(--fg);font-weight:550}
@@ -776,7 +815,10 @@ const n = v => v >= 1e6 ? (v/1e6).toFixed(2)+"M" : v >= 1e3 ? Math.round(v/1e3)+
 const dur = s => s < 60 ? Math.round(s)+" s" : s < 3600 ? Math.round(s/60)+" min"
   : s < 86400 ? (s/3600).toFixed(1)+" h" : (s/86400).toFixed(1)+" d";
 const ago = (t, now) => dur(Math.max(0, now - t));
-const esc = s => (s||"").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+// quotes included: most of what goes through esc() lands in an attribute, and a repository
+// path or a ticket title is allowed to contain one
+const esc = s => (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",
+  '"':"&quot;","'":"&#39;"}[c]));
 
 function kpi(v, l, c){ return `<div class="kpi ${c||""}"><b>${v}</b><span>${l}</span></div>`; }
 
@@ -861,7 +903,7 @@ async function focusSession(btn){
         pid: Number(btn.dataset.pid), cwd: btn.dataset.cwd})})).json();
     if(!r.ok) throw new Error(r.error || "failed");
   } catch (e) {
-    btn.innerHTML = "\u2717 " + esc(String(e.message || e)).slice(0, 40);
+    btn.innerHTML = "\u2717 " + esc(String(e.message || e).slice(0, 40));
     btn.title = String(e.message || e);
     setTimeout(() => { btn.innerHTML = label; btn.disabled = false; }, 4000);
     return;
@@ -936,9 +978,36 @@ function body(t){
   return out.join("");
 }
 
-function detail(t){
-  return `<div class="tk"><div class="tk-h"><span class="tk-id">${esc(t.id)}</span>${
-    esc(t.title)}</div>`
+// What a button last said - the board is repainted wholesale every tick, so a label
+// written into the DOM would be gone before it is read. One slot: a second click replaces
+// the message, and `key` (ticket+action) decides which button it is shown on.
+let blFlash = null;  // {key, text, until}
+async function flash(key, text, ms){
+  const f = blFlash = {key, text, until: Infinity};
+  await tick();  // the countdown starts when the label is painted, not when it is set -
+  if(blFlash !== f) return;  // a slow /api/backlog would otherwise eat the whole message
+  f.until = Date.now() + ms;
+  setTimeout(tick, ms + 50);  // it has to expire even with auto-refresh stopped
+}
+const label = (key, dflt) =>
+  blFlash && blFlash.key === key && Date.now() < blFlash.until ? esc(blFlash.text) : dflt;
+
+function detail(t, p){
+  const live = p.live.includes(t.id);
+  const cmd = "/feature:start " + t.id;
+  // every value an action needs rides on the button, the way the session cards carry
+  // data-pid/data-cwd: a click is handled against the board that painted it, not against
+  // whatever `blProj` has moved on to while a repaint was in flight
+  const act = [`<button class="go" data-act="copy" data-id="${esc(t.id)}"
+      data-cmd="${esc(cmd)}"
+      title="copy ${esc(cmd)} to the clipboard">${label(t.id + ":copy", "copy")}</button>`];
+  if(p.session) act.push(`<button class="go" data-act="focus" data-id="${esc(t.id)}"
+      data-pid="${esc(String(p.session.pid))}" data-cwd="${esc(p.session.cwd)}"
+      title="bring the ${esc(p.session.host)} window of this project to the front"
+      >${label(t.id + ":focus", "\u2197 " + esc(p.session.host))}</button>`);
+  return `<div class="tk"><div class="tk-h"><span class="tk-t">${
+      live ? `<i class="spin" title="a session is running on this ticket"></i>` : ""}<span class="tk-id">${esc(t.id)}</span>${
+      esc(t.title)}</span><span class="tk-act">${act.join("")}</span></div>`
     + t.fields.map(f => `<div class="tk-f"><b>${esc(f[0])}</b> ${md(f[1])}</div>`).join("")
     + (t.body ? `<div class="tk-b">${body(t)}</div>` : "")
     + `</div>`;
@@ -966,19 +1035,45 @@ function board(d){
   const list = groups.map(([title, ts, done]) => `<div class="grp">${esc(title)} &middot; ${
     ts.length}</div>` + ts.map(t => `<div class="tr${t.id === blSel ? " on" : ""}${
       done ? " done" : ""}" data-id="${esc(t.id)}" title="${esc(t.title)}"><span class="id">${esc(t.id)}</span>
-      <span class="ti">${esc(t.title)}</span></div>`).join("")).join("");
+      <span class="ti">${esc(t.title)}</span>${p.live.includes(t.id)
+        ? `<i class="spin" title="a session is running on this ticket"></i>` : ""}</div>`).join("")).join("");
   const sel = all.find(t => t.id === blSel);
   return picker + `<div class="bl"><div><div class="meta">${p.open.count} open${
       p.open.lastId ? " &middot; last id " + esc(p.open.lastId) : ""} &middot; ${esc(p.root)}</div>
-      ${list}</div><div>${sel ? detail(sel) : ""}</div></div>`;
+      ${list}</div><div>${sel ? detail(sel, p) : ""}</div></div>`;
 }
 
 document.getElementById("backlog").addEventListener("click", ev => {
+  const act = ev.target.closest("button[data-act]");
+  if(act){ boardAction(act); return; }
   const proj = ev.target.closest("button[data-root]");
   if(proj){ blProj = proj.dataset.root; blSel = null; tick(); return; }
   const row = ev.target.closest(".tr");
   if(row){ blSel = row.dataset.id; tick(); }
 });
+
+// The board's own handler; `focusSession` stays with the grid, because it reports into
+// `btn.innerHTML` with a 4 s timer and the board throws that node away every 3 s.
+// Everything here - success and failure alike - goes through `blFlash` instead.
+async function boardAction(btn){
+  const d = btn.dataset, id = d.id, what = d.act, key = id + ":" + what;
+  if(what === "copy"){
+    try {
+      await navigator.clipboard.writeText(d.cmd);
+      flash(key, "\u2713 copied", 2500);
+    } catch (e) { flash(key, "\u2717 " + String(e.message || e).slice(0, 30), 4000); }
+    return;
+  }
+  if(blFlash && blFlash.key === key && blFlash.until === Infinity) return;  // still in flight
+  flash(key, "\u2026", 30000);
+  try {
+    const r = await (await fetch("/api/focus", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({pid: Number(d.pid), cwd: d.cwd})})).json();
+    if(!r.ok) throw new Error(r.error || "failed");
+    flash(key, "\u2713", 3000);
+  } catch (e) { flash(key, "\u2717 " + String(e.message || e).slice(0, 30), 5000); }
+}
 
 // which view is painted; the sessions grid and the backlog never show at once - with
 // eight sessions the board would be a scroll away, which is not a board
@@ -1042,7 +1137,20 @@ PAGE = PAGE.replace("__VERSION__", code_version())
 
 
 class Handler(BaseHTTPRequestHandler):
+    def host_ok(self) -> bool:
+        """The dashboard is bound to the loopback, which stops everything except DNS
+        rebinding: a page on `evil.tld` stays on its own origin, but a short-TTL record
+        re-points that name at 127.0.0.1, so the browser calls a fetch to it same-origin
+        and hands over the reply without any CORS header of ours being consulted. The one
+        thing that gives it away is the `Host` the browser still sends, and checking it has
+        to cover the reads - the backlog prose, project paths and the last thing an agent
+        said are all on the GET side."""
+        return self.headers.get("Host") in _ORIGINS
+
     def do_GET(self):  # noqa: N802
+        if not self.host_ok():
+            self.send_error(403)
+            return
         if self.path.startswith("/api/state"):
             with _lock:
                 body = json.dumps(build_state()).encode()
@@ -1063,9 +1171,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def same_origin(self) -> bool:
+        """`/api/focus` acts on the machine rather than reporting on it, so a page on some
+        other site must not be able to reach it. `host_ok` already ran on the way in and is
+        what defeats DNS rebinding; an `Origin` check alone does not. On top of it a POST
+        must be JSON, which makes the request non-simple, so a cross-origin attempt needs a
+        preflight and this server answers none - and `Origin`/`Sec-Fetch-Site`, when the
+        browser sends them, must say same-origin."""
+        if not self.host_ok():
+            return False
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            return False
+        site = self.headers.get("Sec-Fetch-Site")
+        if site and site != "same-origin":
+            return False
+        origin = self.headers.get("Origin")
+        return not origin or origin in {f"http://{h}" for h in _ORIGINS}
+
     def do_POST(self):  # noqa: N802
-        if not self.path.startswith("/api/focus"):
+        if self.path.split("?")[0] != "/api/focus":
             self.send_error(404)
+            return
+        if not self.same_origin():
+            self.send_error(403)
             return
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -1091,6 +1219,9 @@ def main() -> None:
     args = ap.parse_args()
 
     url = f"http://127.0.0.1:{args.port}/"
+    _ORIGINS.update({f"127.0.0.1:{args.port}", f"localhost:{args.port}"})
+    if args.port == 80:  # a browser leaves the port out when it is the scheme's default,
+        _ORIGINS.update({"127.0.0.1", "localhost"})  # so `Host` arrives bare
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Claude monitor: {url}  (Ctrl-C to quit)")
     if args.open:
