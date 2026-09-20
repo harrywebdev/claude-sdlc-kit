@@ -54,6 +54,31 @@ co tím schválil; commit, push ani PR nevznikne bez samostatného souhlasu; př
 diskvalifikátoru se pojmenuje a zeptá se navzdory flagu; chování je popsané v sekci
 o flagách v `start.md` včetně výčtu toho, co `--yolo` neobchází
 
+### BL-10 — Dashboard jde vidět jen z lokálního stroje
+**Oblast:** DX/bezpečnost · plugins/claude-monitor/tools/claude_monitor.py
+
+Server se váže natvrdo na loopback (`ThreadingHTTPServer(("127.0.0.1", args.port))`, ř. 1250)
+a `_ORIGINS` se plní fixně loopbackovými jmény (ř. 1247–1249). Dashboard tedy nejde otevřít
+z telefonu ani z druhého stroje, i když běží celý den.
+
+Přepnutí adresy ale samo o sobě nestačí a je to past: celá obrana serveru na tom loopbacku
+stojí. `host_ok()` (ř. 1165) není ochrana proti síti, ale proti DNS rebindingu — funguje právě
+proto, že jediný legitimní `Host` je loopback. Autentizaci nemá server žádnou, takže po otevření
+do sítě vydá `GET /api/state` a `/api/backlog` komukoli na stejné wifi absolutní cesty všech
+projektů, názvy větví, text backlogu a poslední výstup agentů. `POST /api/focus` je na tom
+podobně: `same_origin()` (ř. 1199) kontroluje `Content-Type`, `Sec-Fetch-Site` a `Origin`, jenže
+curl žádnou z těch hlaviček neposílá a chybějící `Origin` kód propouští (ř. 1213) — proti
+prohlížeči na cizí stránce to drží, proti sousedovi na síti ne.
+
+**Pozor:** token musí platit i na čtecí stranu, ne jen na `/api/focus` — ta čtecí je ten citlivější
+konec. A jakmile server poslouchá v síti, přestává být BL-6 (nevalidované `cwd` ve `focus()`)
+kosmetika: ten samý endpoint pak umí otevřít libovolnou cestu v editoru na povel z jiného stroje.
+
+**Hotovo když:** `--host` je opt-in (default zůstane `127.0.0.1` a beze změny chování), při
+ne-loopback hostu se generuje token vypsaný v URL do konzole, bez něj vrací 403 i `GET /` a obě
+čtecí API, a stránka ho posílá vlastní hlavičkou (ne cookie), takže cizí původ neprojde ani bez
+kontroly `Origin`
+
 ## Nízká priorita
 
 ### BL-6 — `focus()` nevaliduje `cwd` z requestu
@@ -83,4 +108,4 @@ můžou být něco, co do repa patří. Je to rozhodnutí, co se verzuje, ne ř�
 **Hotovo když:** `git add -A` nemůže publikovat lokální cesty ani snapshoty z prohlížeče,
 a to, co se verzovat má, verzované zůstane
 
-<!-- last-id: BL-9 -->
+<!-- last-id: BL-10 -->
