@@ -3,6 +3,25 @@
 Tickety, které opustily `BACKLOG.md`. Nejnovější nahoře. Nic z toho není práce,
 která by čekala na udělání.
 
+### BL-8 — Přepnutí view zhasne vybraný projekt v backlogu
+**Closed:** 2026-09-20 · done · main
+**Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py
+
+`setView()` dělá `querySelectorAll(".tab").forEach(b => b.classList.toggle("on",
+b.dataset.v === v))`. Přepínače projektů nad backlog seznamem mají taky třídu
+`tab`, ale žádné `data-v`, takže každé přepnutí view sundá zvýraznění vybranému projektu.
+Vrátí se až při dalším překreslení o 3 s později — vybraný projekt se přitom nemění, jen
+přestane být vidět.
+
+**Pozor:** třídu `tab` sdílejí obojí už delší dobu, ale obsluha kliků na boardu na tom
+názvu teď staví (`.tab[data-root]`), takže případné oddělení tříd musí projít oběma místy.
+
+**Hotovo když:** přepnutí sessions ↔ backlog nechá zvýrazněný projekt zvýrazněný
+
+**Řešení:** selektor v `setView()` zúžený na `.tab[data-v]`, tedy jen na view taby
+v hlavičce. Třídy `tab` zůstaly sdílené a obsluha kliků na boardu (`.tab[data-root]`)
+se nemění — jediné místo, které o oba druhy tlačítek zakoplo, byl ten `forEach`.
+
 ### BL-3 — Refresh stránky vždy zahodí rozdělaný pohled
 **Closed:** 2026-09-20 · done · main
 **Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py

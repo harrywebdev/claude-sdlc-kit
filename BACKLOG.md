@@ -83,19 +83,4 @@ můžou být něco, co do repa patří. Je to rozhodnutí, co se verzuje, ne ř�
 **Hotovo když:** `git add -A` nemůže publikovat lokální cesty ani snapshoty z prohlížeče,
 a to, co se verzovat má, verzované zůstane
 
-### BL-8 — Přepnutí view zhasne vybraný projekt v backlogu
-**Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py
-
-`setView()` dělá `querySelectorAll(".tab").forEach(b => b.classList.toggle("on",
-b.dataset.v === v))`. Přepínače projektů nad backlog seznamem mají taky třídu
-`tab`, ale žádné `data-v`, takže každé přepnutí view sundá zvýraznění vybranému projektu.
-Vrátí se až při dalším překreslení o 3 s později — vybraný projekt se přitom nemění, jen
-přestane být vidět.
-
-**Pozor:** třídu `tab` sdílejí obojí už delší dobu, ale obsluha kliků na boardu na tom
-názvu teď staví (`.tab[data-root]`), takže případné oddělení tříd musí projít oběma místy.
-
-**Hotovo když:** přepnutí sessions ↔ backlog nechá zvýrazněný projekt zvýrazněný
-
-
 <!-- last-id: BL-9 -->

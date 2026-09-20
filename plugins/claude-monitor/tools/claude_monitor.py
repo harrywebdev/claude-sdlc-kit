@@ -1102,7 +1102,9 @@ if(view !== "backlog") view = "sessions";
 function setView(v){
   view = v;
   save("view", v);
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  // only the view tabs - the board's project picker shares the class and would lose its
+  // own `on` until the next repaint three seconds later
+  document.querySelectorAll(".tab[data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   document.getElementById("kpis").hidden = v !== "sessions";
   document.getElementById("grid").hidden = v !== "sessions";
   document.getElementById("backlog").hidden = v !== "backlog";
