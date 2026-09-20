@@ -25,29 +25,6 @@ sám stav v proměnné nestačí, jak to má fold KPI nebo výběr ticketu v bac
 umí tmavý/světlý/podle systému, volba přežije reload a ve světlém režimu je
 čitelná i oranžová karta `needs you`, plan tiles a stavové pilulky
 
-### BL-3 — Refresh stránky vždy zahodí rozdělaný pohled
-**Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py
-
-Který view je vykreslený, drží obyčejná proměnná `let view = "sessions"` a vybraný projekt
-s tiketem `let blProj = null, blSel = null`. V celém souboru není ani jeden zápis do
-`localStorage` nebo do URL, takže každé F5 — i to, které si vynutí sám dashboard po restartu
-serveru — hodí člověka zpátky na sessions a v backlogu na první projekt a první tiket.
-Kdo board používá, musí po každém refreshi znovu naklikat tab, projekt a tiket, který právě četl.
-
-Stejnou vadu mají i ostatní volby v hlavičce: `ivIdx` (interval auto-refreshe) a fold KPI
-se resetují úplně stejně.
-
-**Pozor:** stav nesmí skončit v DOMu — board i grid se překreslují celým `innerHTML` při
-každém ticku. Patří vedle `blProj`/`blSel` a do `localStorage`, ať to funguje stejně jako
-přepínač režimu v BL-1. Obnovený `blProj` navíc nemusí odpovídat žádnému otevřenému
-projektu (session mezitím skončila) a `blSel` žádnému existujícímu tiketu — `board()` už
-dnes umí spadnout zpátky na první položku, ale ten fallback musí zabrat i pro hodnotu
-načtenou z úložiště, ne jen pro `null`.
-
-**Hotovo když:** po refreshi zůstane otevřený stejný view, a v backlogu i stejný projekt
-a tiket; neplatný uložený projekt nebo tiket dashboard tiše přepne na první existující místo
-toho, aby zůstal prázdný
-
 ### BL-4 — `/feature:start --yolo` pro běh bez odklikávání
 **Oblast:** DX · plugins/feature/commands/start.md
 

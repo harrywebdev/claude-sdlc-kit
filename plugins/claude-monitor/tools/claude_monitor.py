@@ -822,10 +822,24 @@ const esc = s => (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"
 
 function kpi(v, l, c){ return `<div class="kpi ${c||""}"><b>${v}</b><span>${l}</span></div>`; }
 
+// Everything the user picks in the header or on the board lives in a plain variable,
+// because both the grid and the board are rebuilt from `innerHTML` on every tick. That
+// makes a reload - including the one the dashboard forces on itself after a server
+// restart - throw the whole view away, so each of those variables is mirrored here.
+// Storage can be denied outright (private windows, cookies off); a dashboard that
+// forgets is better than one that does not paint.
+const LS = "claude-monitor:";
+function load(k, dflt){
+  try { const v = localStorage.getItem(LS + k); return v === null ? dflt : JSON.parse(v); }
+  catch (e) { return dflt; }
+}
+function save(k, v){ try { localStorage.setItem(LS + k, JSON.stringify(v)); } catch (e) {} }
+
 // click the interval in the sub line to cycle it; like the KPI fold, the state has to
 // live outside the DOM because the sub line is rewritten on every tick
 const INTERVALS = [[3000, "3 s"], [10000, "10 s"], [60000, "1 min"], [0, "stop"]];
-let ivIdx = 0, timer = null;
+let ivIdx = load("iv", 0), timer = null;
+if(!INTERVALS[ivIdx]) ivIdx = 0;  // the list may have been shorter when this was stored
 function arm(){
   clearInterval(timer);
   const ms = INTERVALS[ivIdx][0];
@@ -833,6 +847,7 @@ function arm(){
 }
 function cycleRefresh(){
   ivIdx = (ivIdx + 1) % INTERVALS.length;
+  save("iv", ivIdx);
   arm();
   // tick() repaints the label too, but only once its fetch resolves - a click has to
   // answer immediately, so write it here as well
@@ -841,9 +856,10 @@ function cycleRefresh(){
 }
 
 // the KPI row is rebuilt every tick, so the fold state lives out here, not in the DOM
-let kpisAll = false;
+let kpisAll = load("kpis", false);
 function toggleKpis(){
   kpisAll = !kpisAll;
+  save("kpis", kpisAll);
   paintKpiFold();
 }
 function paintKpiFold(){
@@ -1015,18 +1031,22 @@ function detail(t, p){
 
 // which project and which ticket are open; the board is repainted on every tick, so
 // neither can live in the DOM
-let blProj = null, blSel = null;
+let blProj = load("blProj", null), blSel = load("blSel", null);
+// a stored project or ticket can be gone by the time it is read back - the session ended,
+// the ticket was closed - so both are written through here and `board()` corrects them
+function setProj(root){ blProj = root; save("blProj", root); setSel(null); }
+function setSel(id){ blSel = id; save("blSel", id); }
 
 function board(d){
   if(!d.projects.length) return `<div class="bl-none">No open session sits in a project
     with a <code>BACKLOG.md</code>. <code>/feature:backlog-init</code> sets one up.</div>`;
   let p = d.projects.find(x => x.root === blProj);
-  if(!p){ p = d.projects[0]; blProj = p.root; blSel = null; }
+  if(!p){ p = d.projects[0]; setProj(p.root); }
   const groups = p.open.sections.map(s => [s.title, s.tickets, false]);
   if(p.done && p.done.count)  // closed tickets stay reachable, just dimmed and last
     groups.push(["closed", p.done.sections.flatMap(s => s.tickets), true]);
   const all = groups.flatMap(g => g[1]);
-  if(!all.some(t => t.id === blSel)) blSel = all.length ? all[0].id : null;
+  if(!all.some(t => t.id === blSel)) setSel(all.length ? all[0].id : null);
   const picker = d.projects.length > 1
     ? `<div class="tabs">` + d.projects.map(x => `<button class="tab${
         x.root === blProj ? " on" : ""}" data-root="${esc(x.root)}" title="${esc(x.root)}">${
@@ -1047,9 +1067,9 @@ document.getElementById("backlog").addEventListener("click", ev => {
   const act = ev.target.closest("button[data-act]");
   if(act){ boardAction(act); return; }
   const proj = ev.target.closest("button[data-root]");
-  if(proj){ blProj = proj.dataset.root; blSel = null; tick(); return; }
+  if(proj){ setProj(proj.dataset.root); tick(); return; }
   const row = ev.target.closest(".tr");
-  if(row){ blSel = row.dataset.id; tick(); }
+  if(row){ setSel(row.dataset.id); tick(); }
 });
 
 // The board's own handler; `focusSession` stays with the grid, because it reports into
@@ -1077,9 +1097,11 @@ async function boardAction(btn){
 
 // which view is painted; the sessions grid and the backlog never show at once - with
 // eight sessions the board would be a scroll away, which is not a board
-let view = "sessions";
+let view = load("view", "sessions");
+if(view !== "backlog") view = "sessions";
 function setView(v){
   view = v;
+  save("view", v);
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   document.getElementById("kpis").hidden = v !== "sessions";
   document.getElementById("grid").hidden = v !== "sessions";
@@ -1130,7 +1152,8 @@ async function tick(){
     document.getElementById("sub").textContent = "connection to the server failed: " + e;
   }
 }
-tick(); arm();
+setView(view);  // the markup ships with sessions open; a restored view has to take over
+arm();
 </script>
 """
 PAGE = PAGE.replace("__VERSION__", code_version())
