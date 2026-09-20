@@ -51,8 +51,7 @@ Copy the wiki line from that command's phase F report, especially the lint numbe
 links and contradictions in the wiki are a finding for the user, not something you swallow.
 
 - `VERDICT:` is the **first line** of the report — nothing above it, not a word of
-  preamble. The live dashboard reads the step's result off that line. An optional
-  short summary may follow an em dash: `VERDICT: WRITTEN — 2 files, wiki incremental`.
+  preamble. An optional short summary may follow an em dash: `VERDICT: WRITTEN — 2 files, wiki incremental`.
 - `NOTHING` when you wrote no file. When the change does not affect documentation at all,
   that is the right answer — plus one sentence why.
 

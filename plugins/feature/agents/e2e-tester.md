@@ -55,8 +55,7 @@ Findings (only when something is red):
 ```
 
 - `VERDICT:` is the **first line** of the report — nothing above it, not a word of preamble.
-  The live dashboard reads the step's result off that line. An optional short summary may
-  follow an em dash: `VERDICT: FAIL — 1 of 4, the switch does not persist`.
+  An optional short summary may follow an em dash: `VERDICT: FAIL — 1 of 4, the switch does not persist`.
 - `SKIPPED` when the project has no E2E setup or the change cannot be reached through the UI —
   with the reason, in one sentence. `FAIL` when a test is red for any reason other than a
   mistake of your own. `PASS` only when the suite you ran is green.

@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "claude-monitor",
-      "description": "Live dashboard of every Claude Code session on the machine — status, tokens, context, subagent tree and workflow progress.",
+      "description": "Live dashboard of every Claude Code session on the machine — status, tokens, context, subagent tree and the project backlog.",
       "author": { "name": "Miloslav Marel" },
       "category": "productivity",
       "source": "./plugins/claude-monitor"

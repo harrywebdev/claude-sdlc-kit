@@ -53,8 +53,7 @@ Findings (most severe first):
 ```
 
 - `VERDICT:` is the **first line** of the report — nothing above it, not a word of
-  preamble. The live dashboard reads the step's result off that line. An optional
-  short summary may follow an em dash: `VERDICT: CHANGES — 1 high`.
+  preamble. An optional short summary may follow an em dash: `VERDICT: CHANGES — 1 high`.
 - `CHANGES` only for `critical` or `high`. A secret in documentation is always at least
   `high` — what is in git is out, even if someone deletes it in the next commit.
 - For a documentation finding, say whether it belongs to the code author or the doc-writer.

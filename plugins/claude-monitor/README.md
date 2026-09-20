@@ -94,48 +94,6 @@ start brings it back.
 - **version** — `vYYYYMMDD-commit` in the top right corner; the date is the **commit's**, so
   the same code always reports the same version (outside a git checkout only the file date)
 - **subagent tree** — agentType, description, output tokens, how long ago it was active
-- **step row** — which `/feature:start` checking agents have run, with their verdicts
-
-## The step row
-
-A card whose session ran `/feature:start` gets a row of pills —
-**main · plan · impl · e2e · lint · review · fixes · docs · security**. It comes up **with the
-run**, not with the first subagent: the workflow leaves a `<command-name>/feature:start`
-marker in the transcript, which the dashboard is reading anyway. So the first steps, which
-have no subagent of their own, are a row of dashes with **main** blinking rather than a card
-that says nothing. Green ran, orange is running right now,
-dashed never ran, and a leading **main** lights up when the session is busy with nothing
-delegated — the main context itself is working. A step that did not come back clean
-(`CHANGES`, `HANDBACK`, `FAIL`) carries a star, `plan*`; one that went round twice carries a
-counter, `review ×2`. The word itself, the number of runs and how long ago are in the tooltip
-— the pill stays a label.
-
-Six of them are the steps that **run as a subagent**, so Claude Code writes a file for them
-by itself. The other three are read off the order of the workflow, which is fixed:
-
-- **main** lights up when the session is busy with nothing delegated — the main context
-  itself is working. Which step it is on is not knowable; that it is working is.
-- **impl** starts once the plan has been reviewed and is over the moment any checking agent
-  runs. Neither of those is a guess — e2e does not run before the implementation. It gets one
-  thing wrong: for the minute or two between the plan review and the gate, the main context is
-  still folding findings into the plan and this already says implementation.
-- **fixes** is the same shape one step further on: it starts once the code review is back and
-  ends when documentation or security runs. Both light up only while **main** does — nobody
-  is fixing anything in a session that is idle or waiting on you.
-
-Everything else — the task, the branch, the consultation, the commit — leaves
-nothing behind to read, and the row does not draw it, because drawing it would mean guessing.
-
-**Repetition is a counter, not an arrow back.** A second round of review is `review ×2`; the
-row stays six pills and the runs live inside one. It counts agents, not rounds — `/feature:plan-review`
-can launch two or three reviewers at once with different lenses, and that is `plan ×3` in one
-round. The timestamps in the tooltip are what tell the two apart. Arrows back and the picture turns into
-spaghetti.
-
-Nothing is written anywhere for this. No state file in your project, no record in
-`~/.claude`, no hook, not a line of bookkeeping in the workflow's own prompt — the row is a
-read-only summary of the subagent tree right below it, grouped by step. So it cannot fall out
-of step with reality: it shows what ran, and about everything else it says nothing.
 
 ## The backlog board
 
@@ -171,8 +129,6 @@ the repo, and headings and fields come out of the file as they are.
 | plan usage tiles | `~/.claude.json` → `cachedUsageUtilization` (the cache `/usage` fills) |
 | restart + URL into the session | `hooks/session-start.sh` → `tools/restart.sh` (SessionStart hook) |
 | the reason for waiting on the user | `hooks/notification.py` → `~/.claude/monitor/notify/<sessionId>.json` |
-| that `/feature:start` is running | the `<command-name>/feature:start` marker in the transcript |
-| the `/feature:start` step row | `<sessionId>/subagents/agent-*.meta.json` → `agentType`, and `VERDICT:` out of the agent's last message in `agent-*.jsonl` |
 | the backlog board | `BACKLOG.md` + `BACKLOG.done.md` in the repository root of an open session's `cwd` (parsed only when the file changes) |
 | the app hosting a session | `ps -Ao pid,ppid,tty,command` — one call per refresh, the parent chain is walked in memory |
 
@@ -193,12 +149,5 @@ whether the file is small or several megabytes.
 - Focus into an **editor** lands on the window of the session's `cwd`, not on the terminal
   panel inside it — AppleScript cannot reach into an editor's terminal tabs. Two sessions in
   the same folder therefore focus the same window.
-- The row covers **the current run only**. A second feature in the same session starts from an
-  empty row: the marker dates the run, and agents older than it belonged to the one before.
-  The subagent tree underneath keeps showing everything the session ever spawned — that is the
-  difference between the two, and why the tree is the longer list.
-- The marker never expires, so a session that finished a feature an hour ago keeps its row and
-  shows that run. That is worth more than an empty card, and it is not a claim that anything is
-  running now — **main** is.
 - A branch belongs to the **worktree, not the session** — several sessions in one directory are
   always on the same branch, and a `checkout` in one switches the branch for all the others.

@@ -57,8 +57,7 @@ Left for the author:
 ```
 
 - `VERDICT:` is the **first line** of the report — nothing above it, not a word of
-  preamble. The live dashboard reads the step's result off that line. An optional
-  short summary may follow an em dash: `VERDICT: HANDBACK — 2 for the author`.
+  preamble. An optional short summary may follow an em dash: `VERDICT: HANDBACK — 2 for the author`.
 - `HANDBACK` when **Left for the author** is not empty — whatever you fixed yourself.
   Everything mechanical done and nothing handed back is `CLEAN`.
 

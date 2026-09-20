@@ -107,8 +107,8 @@ subagents.
 Every one of them opens its report with a `VERDICT:` line — `PASS | CHANGES` for the three
 reviewers, `CLEAN | HANDBACK` for the linter, `WRITTEN | NOTHING` for the doc-writer, optionally
 with a short summary after an em dash. The rest of the report stays prose written for a human;
-that one line is the only part anything else reads (the claude-monitor dashboard picks the
-step's verdict off it). Nothing depends on it — where nobody reads it, it costs one line.
+that one line is what the main agent reads first to know whether the step is closed. Nothing
+depends on it — where nobody reads it, it costs one line.
 
 ## The workflows
 
@@ -128,8 +128,7 @@ They are plain scripts in the plugin's `workflows/` directory, which Claude Code
 **the file has to end in `.js`** (a plugin's loader takes nothing else) and the name it registers is
 `<plugin>:<meta.name>`. The commands only pass `args` and never retype the orchestration. The whole
 prompt for the reviewers is `args.brief`, which is what keeps context isolation a property of the caller: the script hands on
-what it is given and adds only the lens. The verifiers run **without** an `agentType`, so the
-claude-monitor dashboard still reads the step's verdict off the reviewers themselves.
+what it is given and adds only the lens.
 
 ## The composition of steps
 

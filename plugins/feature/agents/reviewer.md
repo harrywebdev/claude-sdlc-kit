@@ -40,8 +40,7 @@ Checked and clean: <what you verified and found fine, max 3 bullets>
 ```
 
 - `VERDICT:` is the **first line** of the report — nothing above it, not a word of
-  preamble. The live dashboard reads the step's result off that line. An optional
-  short summary may follow an em dash: `VERDICT: CHANGES — 1 blocker, 2 major`.
+  preamble. An optional short summary may follow an em dash: `VERDICT: CHANGES — 1 blocker, 2 major`.
 - Give `CHANGES` only when at least one `blocker` or `major` exists.
 - Do not write findings with no concrete impact ("this could be more elegant") — or mark
   them `minor`.

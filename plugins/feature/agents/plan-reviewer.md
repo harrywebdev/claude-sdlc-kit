@@ -46,8 +46,7 @@ Verified: <files/symbols you actually opened or grepped>
 ```
 
 - `VERDICT:` is the **first line** of the report — nothing above it, not a word of
-  preamble. The live dashboard reads the step's result off that line. An optional
-  short summary may follow an em dash: `VERDICT: CHANGES — 2 blocking, 1 should-fix`.
+  preamble. An optional short summary may follow an em dash: `VERDICT: CHANGES — 2 blocking, 1 should-fix`.
 - Order by severity. `CHANGES` only when at least one **Blocking** finding exists.
 - Report **only** what threatens correctness or the task. No style preferences.
 - **Do not invent problems.** If the plan is sound, say so in one line and stop.
