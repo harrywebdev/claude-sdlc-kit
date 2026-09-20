@@ -27,16 +27,4 @@ umí tmavý/světlý/podle systému, volba přežije reload a ve světlém reži
 
 ## Nízká priorita
 
-### BL-6 — `focus()` nevaliduje `cwd` z requestu
-**Oblast:** bezpečnost · plugins/claude-monitor/tools/claude_monitor.py
-
-`focus()` předá `cwd` z těla POSTu rovnou do `_run(["open", "-a", app, cwd])` (ř. 439).
-Žádný shell v tom není, takže o injection nejde, ale je to jediná hodnota z requestu,
-která se v celém souboru používá jako cesta — a `cwd` začínající pomlčkou `open`
-rozparsuje jako přepínač, ne jako cestu. Server přitom `cwd` všech session zná, takže
-porovnat je proti čemu.
-
-**Hotovo když:** `/api/focus` přijme jen takové `cwd`, které server sám vypsal mezi
-session, a odmítnutí vrátí `{"ok": false, "error": ...}` jako ostatní chyby
-
 <!-- last-id: BL-10 -->

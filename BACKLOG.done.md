@@ -3,6 +3,25 @@
 Tickety, které opustily `BACKLOG.md`. Nejnovější nahoře. Nic z toho není práce,
 která by čekala na udělání.
 
+### BL-6 — `focus()` nevaliduje `cwd` z requestu
+**Closed:** 2026-09-20 · done · main
+**Oblast:** bezpečnost · plugins/claude-monitor/tools/claude_monitor.py
+
+`focus()` předá `cwd` z těla POSTu rovnou do `_run(["open", "-a", app, cwd])` (ř. 439).
+Žádný shell v tom není, takže o injection nejde, ale je to jediná hodnota z requestu,
+která se v celém souboru používá jako cesta — a `cwd` začínající pomlčkou `open`
+rozparsuje jako přepínač, ne jako cestu. Server přitom `cwd` všech session zná, takže
+porovnat je proti čemu.
+
+**Hotovo když:** `/api/focus` přijme jen takové `cwd`, které server sám vypsal mezi
+session, a odmítnutí vrátí `{"ok": false, "error": ...}` jako ostatní chyby
+
+**Řešení:** `focus()` porovná `cwd` z requestu s adresáři, které server sám vypsal mezi
+session (`agents_json()`), a neznámou hodnotu odmítne jako `{"ok": false, "error":
+"unknown session directory"}`. Kontrola sedí přímo ve větvi pro editory, tedy na jediném
+místě, kde se `cwd` používá jako argument `open` — ostatní cesty (tab přes osascript,
+prázdné `cwd`) se nemění.
+
 ### BL-4 — `/feature:start --yolo` pro běh bez odklikávání
 **Closed:** 2026-09-20 · done · feature/BL-4-yolo-flag
 **Oblast:** DX · plugins/feature/commands/start.md

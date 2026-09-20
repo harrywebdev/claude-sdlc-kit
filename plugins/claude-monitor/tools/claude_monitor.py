@@ -435,6 +435,11 @@ def focus(pid: int, cwd: str) -> dict:
         ok, out = _run(["osascript", "-e", script])
         scope = out or "app"
     elif app in EDITORS and cwd:
+        # The only value from the request that ends up used as a path. No shell is
+        # involved, but `open` reads an argument starting with a dash as a switch, so
+        # it is matched against the directories the server itself listed as sessions.
+        if cwd not in {s.get("cwd", "") for s in agents_json()}:
+            return {"ok": False, "error": "unknown session directory"}
         ok, out = _run(["open", "-a", app, cwd])
         scope = "window"
     else:
