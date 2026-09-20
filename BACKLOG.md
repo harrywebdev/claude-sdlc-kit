@@ -25,35 +25,6 @@ sám stav v proměnné nestačí, jak to má fold KPI nebo výběr ticketu v bac
 umí tmavý/světlý/podle systému, volba přežije reload a ve světlém režimu je
 čitelná i oranžová karta `needs you`, plan tiles a stavové pilulky
 
-### BL-4 — `/feature:start --yolo` pro běh bez odklikávání
-**Oblast:** DX · plugins/feature/commands/start.md
-
-Workflow se dnes zastaví u člověka nejmíň pětkrát: potvrzení zadání (krok 1), volba base
-branche, když má repo `develop` i `main` (krok 2), brána nad plánem a složením kroků
-(krok 3, `AskUserQuestion`), schválení založení tiketů do backlogu u nálezů mimo rozsah
-(krok 8) a konzultace (krok 11). Kdo pouští malý tiket z backlogu, kde je zadání i
-`Hotovo když` napsané předem, proklikává pět dialogů jen aby odsouhlasil to, co mu workflow
-samo navrhlo. `--fast` na tom nic nemění — podle ř. 129 jen předvyplňuje návrh, samotné
-potvrzení nenahrazuje.
-
-Chybí flag `--yolo`, který u každé takové brány vezme doporučenou variantu (u kroku 3 ten
-jeden klik na vlastní návrh) a jede dál.
-
-**Pozor:** flag nesmí sáhnout na dva druhy bran. Za prvé na pravidla z ř. 312–314 — commit,
-push a PR se bez výslovného souhlasu nedělají ani s `--yolo`; jinak z toho není zrychlení,
-ale ztráta kontroly nad tím, co skončí v origin. Za druhé na diskvalifikátory z ř. 67–71
-(auth, tajemství, nedůvěřený vstup, endpointy, závislosti, migrace, platby, CI/CD) — tam se
-i dnes u `--fast` má pojmenovat důvod a **zeptat se**, a `--yolo` to musí respektovat stejně.
-Musí být taky jasné, co dělá se zastávkami, které nejsou schvalovací, ale záchytné: špinavý
-pracovní strom (krok 2) nebo opakovaný `FAIL` z E2E kvůli cizímu bugu (ř. 316) jsou stop,
-ne rozhodovačka. A flag patří do `argument-hint` v hlavičce, jinak ho nikdo nenajde.
-
-**Hotovo když:** `/feature:start BL-<n> --yolo` doběhne od zadání až po hotový diff bez
-jediného dotazu na uživatele, u brány v kroku 3 zvolí vlastní návrh a napíše do odpovědi,
-co tím schválil; commit, push ani PR nevznikne bez samostatného souhlasu; přítomnost
-diskvalifikátoru se pojmenuje a zeptá se navzdory flagu; chování je popsané v sekci
-o flagách v `start.md` včetně výčtu toho, co `--yolo` neobchází
-
 ## Nízká priorita
 
 ### BL-6 — `focus()` nevaliduje `cwd` z requestu
