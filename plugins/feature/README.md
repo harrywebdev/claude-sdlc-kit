@@ -54,19 +54,22 @@ one and does not create a second file.
 The **main agent** holds the core of the workflow, because it needs one thread from the task
 to the code:
 
-| Step | Where it runs |
-|---|---|
-| 1 Task · 2 Branch | main context |
-| 3 Plan — drafting and folding in findings | main context |
-| 3 Plan — review | `feature:plan-reviewer` (clean context) |
-| 4 Implementation | main context |
-| 5 E2E | `feature:e2e-tester` (clean context) |
-| 6 Lint & format | `feature:linter` (clean context) |
-| 7 Code review | `feature:reviewer` (clean context) |
-| 8 Fixing findings | main context |
-| 9 Documentation | `feature:doc-writer` (clean context) |
-| 10 Security | `feature:security-reviewer` (clean context, sees the docs too) |
-| 11 Consultation · 12 Commit & PR | main context |
+| Step | Runs in | Why there | Fan-out | Always? |
+|---|---|---|---|---|
+| 1 · Task | main context | one thread from the task to the code; the user confirms the agent's summary | — | always · **gate** |
+| 2 · Branch | main context | needs the base branch and the naming convention it just discovered | — | always |
+| 3 · Plan | main context | the plan is the thread, not a deliverable to hand off | — | always |
+| 3 · Plan review | `feature:plan-reviewer` | reviewing your own plan is not a review; a clean context has nothing to defend | **`feature:plan-review` workflow** — 3 lenses (step order · reuse · edge cases), every Blocking finding then refuted by an independent verifier | always |
+| 3 · Gate | main context | the user approves the plan and which of the optional steps run, in one click | — | always · **gate** |
+| 4 · Code | main context | the code comes out of the plan the same agent wrote | — | always |
+| 5 · E2E | `feature:e2e-tester` | the author tests the path they built; a stranger tests the path the user walks — and the runner output stays out of the main window. Writes tests, never source | — | optional |
+| 6 · Lint | `feature:linter` | formatter/lint/typecheck output is the longest and least interesting thing in the run. Gets no task at all — you can lint without knowing the intent | — | always |
+| 7 · Review | `feature:reviewer` | does not know how the code came about, so nothing can talk it out of a finding; no `Edit` — it hands findings back | **`feature:code-review` workflow** — 3 lenses (bugs · simplify · scope vs. plan), every blocker and major refuted by an independent verifier | optional |
+| 8 · Fixes | main context | only the agent that knows the code fixes it; what is out of scope goes to the backlog, not into the conversation | — | always |
+| 9 · Docs | `feature:doc-writer` | writing docs is its own long job; may write, may not commit. Calls `/feature:wiki` so the wiki lands in its window | — | optional |
+| 10 · Security | `feature:security-reviewer` | **dead last, after the docs** — only then is the diff complete, and docs are a security surface too. Gets the branches only, never the task: nothing may convince it a hole is the design | **`feature:security-review` workflow** — 3 lenses (input & access · exposure · docs), every critical and high gets a path to exploitation built | optional · not self-approvable |
+| 11 · Consultation | main context | the findings, what was left undone and what went to the backlog, in one place | — | always · **gate** |
+| 12 · Commit & PR | main context | `/feature:commit`; the PR only as a link, `gh` is not used | — | always · **gate** |
 
 E2E is a subagent for the same reason the reviewers are: the author tests the path they
 happened to build, somebody who did not write the code tests the path the user walks. It gets
