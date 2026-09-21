@@ -170,6 +170,13 @@ def attention(session: dict, session_id: str, mtime: float) -> dict | None:
     reason more precisely (which tool wants permission); the CLI status works even
     without the hook."""
     rec = read_notify(session_id, mtime)
+    # `idle_prompt` fires 60 s after the last transcript write - which a session busy
+    # with its own subagents reaches without the user being asked anything (nothing is
+    # written to the main transcript while a subagent runs, so the record never goes
+    # stale either). The CLI knows the session is working; a permission or MCP dialog
+    # happens mid-turn and stays valid while busy.
+    if rec and rec.get("kind") == "idle_prompt" and session.get("status") == "busy":
+        rec = None
     if rec:
         kind = rec.get("kind") or "?"
         return {
