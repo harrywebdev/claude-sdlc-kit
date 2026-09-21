@@ -91,6 +91,10 @@ start brings it back.
 - **folded away** — subagents, turns, input tokens, thinking, cache read/write, plan tier.
   Always visible instead: sessions, busy, need you, context total, output tokens and **cache
   hit** (the share of the input side served from the cache — what keeps a long session cheap)
+- **theme** — dark, light or by the system, cycled with the button in the top right corner
+  next to the version (◑ system · ☀ light · ☾ dark). The choice is stored, so it survives a
+  reload; while it is on **system**, a system that flips repaints the page under you. Both
+  palettes are one set of CSS variables, so a color is defined once per theme and nowhere else
 - **version** — `vYYYYMMDD-commit` in the top right corner; the date is the **commit's**, so
   the same code always reports the same version (outside a git checkout only the file date)
 - **subagent tree** — agentType, description, output tokens, how long ago it was active

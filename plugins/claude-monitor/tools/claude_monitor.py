@@ -689,9 +689,24 @@ def waiting_count(sessions: list[dict]) -> int:
 PAGE = r"""<!doctype html>
 <meta charset="utf-8"><title>Claude agents</title>
 <style>
-:root{--bg:#191817;--card:#232120;--fg:#f0eee9;--dim:#9a938a;--line:#35322f;
+/* Two palettes, one set of names. `data-theme` on the root always names the theme that
+   is actually painted - "dark" or "light", never "system" - so which of the two the system
+   asks for gets resolved once in JS instead of every palette being repeated here under a
+   `prefers-color-scheme` block. Amber is the one color that needs two entries: `--att` is
+   the fill and the border, `--att-ink` the same signal as text, which on a light card has
+   to be dark enough to read. */
+:root,:root[data-theme="dark"]{color-scheme:dark;
+      --bg:#191817;--card:#232120;--fg:#f0eee9;--dim:#9a938a;--line:#35322f;
       --busy:#f0906a;--idle:#7cc292;--warn:#e0a94a;--bar:#d97757;--bar2:#3d3936;
-      --att:#ffb02e}
+      --max:#f2776b;--idle-bg:#1d1b1a;--idle-line:#2b2927;--idle-fg:#c9c2b8;
+      --att:#ffb02e;--att-ink:#ffb02e;--att-fg:#191817;--att-bg:#3a2c12;
+      --att-soft:rgba(255,176,46,.16);--att-soft2:rgba(255,176,46,.04)}
+:root[data-theme="light"]{color-scheme:light;
+      --bg:#f7f5f1;--card:#fff;--fg:#1f1d1b;--dim:#6b635a;--line:#e2ddd5;
+      --busy:#c2410c;--idle:#2f7d54;--warn:#b07712;--bar:#b4451f;--bar2:#e8e2d9;
+      --max:#d63f22;--idle-bg:#f2efe9;--idle-line:#e6e1d8;--idle-fg:#4b453d;
+      --att:#e08600;--att-ink:#8a5200;--att-fg:#191817;--att-bg:#fdf1dc;
+      --att-soft:rgba(224,134,0,.20);--att-soft2:rgba(224,134,0,.06)}
 *{box-sizing:border-box}
 [hidden]{display:none!important}  /* .kpis/.grid set display, which beats the UA rule */
 body{margin:0;padding:18px;background:var(--bg);color:var(--fg);
@@ -706,7 +721,7 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .kpi.plan.on{border-color:var(--busy)}
 .kpi .bar{margin:6px 0 0}
 .kpi.hot .bar>i{background:var(--warn)}
-.kpi.max .bar>i{background:#f2776b}
+.kpi.max .bar>i{background:var(--max)}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 .kpis:not(.all) .kpi.more-only{display:none}
 .more{background:none;border:1px dashed var(--line);border-radius:8px;color:var(--dim);
@@ -718,12 +733,12 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .kpi span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
 .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.card.idle{background:#1d1b1a;border-color:#2b2927;color:var(--dim)}
-.card.idle .toks b,.card.idle h2{color:#c9c2b8}
+.card.idle{background:var(--idle-bg);border-color:var(--idle-line);color:var(--dim)}
+.card.idle .toks b,.card.idle h2{color:var(--idle-fg)}
 .card.att{border:2px solid var(--att);padding:11px 13px;
-          box-shadow:0 0 0 3px rgba(255,176,46,.16),0 0 30px -6px var(--att);
+          box-shadow:0 0 0 3px var(--att-soft),0 0 30px -6px var(--att);
           animation:pulse 1.8s ease-in-out infinite}
-@keyframes pulse{50%{box-shadow:0 0 0 3px rgba(255,176,46,.04),0 0 8px -4px var(--att)}}
+@keyframes pulse{50%{box-shadow:0 0 0 3px var(--att-soft2),0 0 8px -4px var(--att)}}
 @media (prefers-reduced-motion:reduce){
   .card.att{animation:none}
   .spin{animation:none;border-top-color:currentColor}
@@ -735,7 +750,7 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
     letter-spacing:.05em;font-weight:600;cursor:pointer;flex:none}
 .go:hover{border-color:var(--busy);color:var(--busy)}
 .go:disabled{opacity:.4;cursor:default}
-.card.att .go{border-color:var(--att);color:var(--att)}
+.card.att .go{border-color:var(--att);color:var(--att-ink)}
 .pill{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid currentColor;
       text-transform:uppercase;letter-spacing:.05em;font-weight:600}
 .pill.busy{color:var(--busy)}.pill.idle{color:var(--idle)}
@@ -743,17 +758,17 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
       border:1.5px solid currentColor;border-top-color:transparent;border-radius:99px;
       animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.pill.att{color:#191817;background:var(--att);border-color:var(--att)}
-.att-row{background:#3a2c12;border:1px solid var(--att);border-radius:7px;
+.pill.att{color:var(--att-fg);background:var(--att);border-color:var(--att)}
+.att-row{background:var(--att-bg);border:1px solid var(--att);border-radius:7px;
          padding:6px 9px;margin:0 0 9px;font-size:12.5px;line-height:1.4}
-.att-row b{color:var(--att)}
+.att-row b{color:var(--att-ink)}
 .att-row .d{color:var(--dim);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .att-row .say{margin-top:4px;color:var(--dim);cursor:pointer;overflow:hidden;
               display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.att-row .say::before{content:"\25be ";color:var(--att)}
+.att-row .say::before{content:"\25be ";color:var(--att-ink)}
 .att-row .say.open{display:block;white-space:pre-wrap}
 .att-row .say.open::before{content:"\25b4 "}
-.kpi.att b{color:var(--att)}
+.kpi.att b{color:var(--att-ink)}
 .branch{font-size:12px;font-weight:560;color:var(--fg);opacity:.75;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .meta{color:var(--dim);font-size:12px;margin-bottom:9px}
 .bar{height:5px;background:var(--bar2);border-radius:99px;overflow:hidden;margin:3px 0 5px}
@@ -767,8 +782,11 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .sa-name{font-weight:550;white-space:nowrap}
 .sa-desc{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .sa-tok{color:var(--dim);font-variant-numeric:tabular-nums;flex:none}
-.ver{position:absolute;top:18px;right:18px;color:var(--dim);font-size:11px;
-     font-variant-numeric:tabular-nums}
+.corner{position:absolute;top:14px;right:18px;display:flex;align-items:center;gap:8px}
+.ver{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+.th{background:none;border:1px solid var(--line);border-radius:5px;color:var(--dim);
+    font:inherit;font-size:13px;line-height:1.3;padding:0 7px;cursor:pointer}
+.th:hover{border-color:var(--dim);color:var(--fg)}
 .tabs{display:inline-flex;gap:6px;margin-bottom:14px}
 .tab{background:none;border:1px solid var(--line);border-radius:6px;color:var(--dim);
      font:inherit;font-size:12px;padding:3px 10px;cursor:pointer}
@@ -805,7 +823,19 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
 .tk-b code,.tk-f code{background:var(--bar2);border-radius:4px;padding:0 3px;font-size:11.5px}
 .bl-none{color:var(--dim);font-size:13px}
 </style>
-<div class="ver">__VERSION__</div>
+<script>
+// The root has to carry the theme before the first paint, otherwise a light-mode reload
+// flashes the dark palette. The main script below owns the switch; this only repeats the
+// one read it needs to get ahead of the stylesheet.
+var _th;
+try { _th = JSON.parse(localStorage.getItem("claude-monitor:theme")); } catch (e) {}
+document.documentElement.dataset.theme = _th === "light" || _th === "dark" ? _th
+  : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+</script>
+<div class="corner">
+  <button class="th" onclick="cycleTheme()"></button>
+  <span class="ver">__VERSION__</span>
+</div>
 <h1>Claude agents dashboard</h1>
 <div class="sub" id="sub">loading…</div>
 <div class="tabs">
@@ -839,6 +869,28 @@ function load(k, dflt){
   catch (e) { return dflt; }
 }
 function save(k, v){ try { localStorage.setItem(LS + k, JSON.stringify(v)); } catch (e) {} }
+
+// dark / light / by the system, cycled from the corner button. `data-theme` on the root
+// is the theme being painted, the stored choice can also be "system" - so the media query
+// is read here, and a system that flips while "system" is chosen repaints the page.
+const THEMES = ["system", "light", "dark"];
+const THEME_GLYPH = {system: "\u25d1", light: "\u2600", dark: "\u263d"};
+let theme = load("theme", "system");
+if(!THEMES.includes(theme)) theme = "system";  // an unknown value in storage
+const sysLight = matchMedia("(prefers-color-scheme: light)");
+function applyTheme(){
+  const eff = theme === "system" ? (sysLight.matches ? "light" : "dark") : theme;
+  document.documentElement.dataset.theme = eff;
+  const b = document.querySelector(".th");
+  b.textContent = THEME_GLYPH[theme];
+  b.title = "theme: " + theme + (theme === "system" ? " (" + eff + ")" : "");
+}
+function cycleTheme(){
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  save("theme", theme);
+  applyTheme();
+}
+sysLight.addEventListener("change", () => { if(theme === "system") applyTheme(); });
 
 // click the interval in the sub line to cycle it; like the KPI fold, the state has to
 // live outside the DOM because the sub line is rewritten on every tick
@@ -1159,6 +1211,7 @@ async function tick(){
     document.getElementById("sub").textContent = "connection to the server failed: " + e;
   }
 }
+applyTheme();  // the early script set the palette, this puts the choice on the button
 setView(view);  // the markup ships with sessions open; a restored view has to take over
 arm();
 </script>

@@ -3,6 +3,41 @@
 Tickety, které opustily `BACKLOG.md`. Nejnovější nahoře. Nic z toho není práce,
 která by čekala na udělání.
 
+### BL-1 — Dashboard umí jen tmavý režim
+**Closed:** 2026-09-21 · done · main
+**Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py
+
+Paleta je natvrdo tmavá: `:root` drží jedenáct proměnných, ale v `PAGE` je
+osmnáct různých hexů, takže sedm barev stojí mimo ně — `.card.idle`
+(`#1d1b1a`, `#2b2927`, `#c9c2b8`), `.kpi.max .bar>i` (`#f2776b`),
+`.pill.att` (`#191817`), `.att-row` (`#3a2c12`) — plus dvě `rgba()` ve stínu
+pulzujícího rámečku. Stránka nezná `prefers-color-scheme` ani žádný přepínač.
+Na světlém monitoru za dne se dashboard čte špatně a vedle světlého systému
+svítí jako díra v obrazovce.
+
+**Pozor:** samotné prohození `:root` nestačí, dokud těch sedm barev nejsou
+proměnné; a volba režimu musí přežít reload, takže patří do `localStorage` —
+sám stav v proměnné nestačí, jak to má fold KPI nebo výběr ticketu v backlogu
+**Hotovo když:** dashboard respektuje `prefers-color-scheme`, přepínač v hlavičce
+umí tmavý/světlý/podle systému, volba přežije reload a ve světlém režimu je
+čitelná i oranžová karta `needs you`, plan tiles a stavové pilulky
+
+**Řešení:** dvě palety pod jednou sadou jmen — `:root,:root[data-theme="dark"]` a
+`:root[data-theme="light"]`. Těch sedm barev mimo proměnné dostalo jména (`--max`,
+`--idle-bg`, `--idle-line`, `--idle-fg`, `--att-fg`, `--att-bg`, `--att-soft`/`--att-soft2`)
+a k tomu přibylo `--att-ink`: amber jako výplň a jako text potřebuje ve světlém režimu dvě
+různé hodnoty, protože `#ffb02e` na bílé kartě není čitelný.
+
+`data-theme` na rootu drží vždy jen skutečně vykreslený režim (`dark`/`light`), nikdy
+`system` — dotaz na `prefers-color-scheme` se tím vyřeší jednou v JS místo toho, aby se
+paleta opakovala ještě v media query. Volba (`system`/`light`/`dark`) jde do `localStorage`
+vedle `iv`, `kpis` a `blProj`; malý skript nad `<style>` nasadí paletu ještě před prvním
+vykreslením, takže reload ve světlém režimu neblikne tmavou. Přepínač je vpravo nahoře
+vedle verze a cykluje system → light → dark.
+
+Tmavé hodnoty jsou shodné s původními hexy, takže tmavý režim vypadá přesně jako předtím.
+Ve světlém má každý textový pár kontrast ≥ 5:1 (ověřeno v prohlížeči).
+
 ### BL-6 — `focus()` nevaliduje `cwd` z requestu
 **Closed:** 2026-09-20 · done · main
 **Oblast:** bezpečnost · plugins/claude-monitor/tools/claude_monitor.py
