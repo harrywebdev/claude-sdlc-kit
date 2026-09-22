@@ -3,6 +3,39 @@
 Tickety, které opustily `BACKLOG.md`. Nejnovější nahoře. Nic z toho není práce,
 která by čekala na udělání.
 
+### BL-11 — Monitor: filtrování sessions po projektech
+**Closed:** 2026-09-22 · done · feature/BL-11-session-project-filter
+**Oblast:** dashboard · plugins/claude-monitor/tools/claude_monitor.py
+
+Záložka `backlog` má nahoře taby projektů (`board()`, proměnná `blProj` / `setProj`) a ukazuje
+vždycky jen jeden projekt. Grid sessions žádný filtr nemá — `tick()` vykreslí
+`d.sessions.map(card)`, tedy všechny běžící sessions dohromady. Kdo jede na několika projektech
+naráz, hledá tu svoji session očima v mřížce, kde sousedí karty z nesouvisejících repozitářů;
+zároveň je to nekonzistentní s backlogem, kde se přepínání projektů už nabízí.
+
+**Hotovo když:** nad gridem je přepínač projektů ve stejném stylu jako u backlogu (vč. „vše“),
+volba přežije repaint i reload (uloží se přes `save()`/`load()` jako `view` a `blProj`) a grid
+ukazuje jen sessions zvoleného projektu.
+
+**Pozor:** KPI pruh nad gridem počítá server (`d.totals`, `waiting`) přes všechny sessions —
+při filtrování jen gridu by čísla v hlavičce přestala odpovídat tomu, co je vidět. Sessions nesou
+`project` (basename `cwd`) i plné `cwd`, takže dva stejně pojmenované adresáře se musí rozlišit
+podle `cwd`.
+
+**Řešení:** filtr je celý na straně stránky, server se nezměnil. `projTabs(sessions)` si z
+`d.sessions` postaví mapu podle `cwd` (label je `project`, `title` plná cesta, za jménem počet
+sessions), vykreslí řádek `#projs` nad KPI pruhem a vrátí, co má grid ukázat. Seznam projektů
+tak vzniká z běžících session, ne z projektů backlogu — filtrovat jde i repozitář bez
+`BACKLOG.md`. Klíčem je `cwd`, takže dva stejně pojmenované adresáře jsou dva taby.
+
+Volba žije v `gridProj` (`null` = „all“) a ukládá se přes `save()`/`load()` jako `gridProj`,
+nezávisle na `blProj`. Uložená cesta, která už mezi session není, se při ticku opraví zpátky na
+„all“. Picker se schová, když je projekt jen jeden nebo když je vidět backlog.
+
+KPI pruh už nebere `d.totals`: `sums(list)` spočítá stejných jedenáct čísel nad tím, co je
+v gridu, aby hlavička odpovídala kartám pod ní. Počet v titulku tabu zůstal záměrně globální
+z `d.totals.waiting` — filtr nesmí zamlčet, že na tebe čeká session z jiného projektu.
+
 ### BL-1 — Dashboard umí jen tmavý režim
 **Closed:** 2026-09-21 · done · main
 **Oblast:** UX · plugins/claude-monitor/tools/claude_monitor.py

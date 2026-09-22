@@ -799,6 +799,7 @@ h1{font-size:16px;margin:0 0 2px;font-weight:650}
      font:inherit;font-size:12px;padding:3px 10px;cursor:pointer}
 .tab:hover{border-color:var(--dim);color:var(--fg)}
 .tab.on{border-color:var(--bar);color:var(--fg)}
+.projs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 /* the backlog: a list to scan on the left, one ticket open on the right - a ticket is
    several paragraphs of prose, so cards side by side turn into a wall of text */
 .bl{display:grid;gap:16px;grid-template-columns:minmax(260px,360px) 1fr;align-items:start}
@@ -849,6 +850,7 @@ document.documentElement.dataset.theme = _th === "light" || _th === "dark" ? _th
   <button class="tab on" data-v="sessions" onclick="setView('sessions')">sessions</button>
   <button class="tab" data-v="backlog" onclick="setView('backlog')">backlog</button>
 </div>
+<div class="projs" id="projs" hidden></div>
 <div class="kpis" id="kpis"></div>
 <div class="grid" id="grid"></div>
 <div id="backlog" hidden></div>
@@ -1159,6 +1161,56 @@ async function boardAction(btn){
   } catch (e) { flash(key, "\u2717 " + String(e.message || e).slice(0, 30), 5000); }
 }
 
+// Which project the grid shows; null is all of them. The list is derived from the
+// running sessions, not from the board's projects - a session in a repository without a
+// BACKLOG.md has to be filterable too. `cwd` is the key, because two checkouts can share
+// a basename, and the name is only the label.
+let gridProj = load("gridProj", null);
+function setGridProj(cwd){ gridProj = cwd; save("gridProj", cwd); }
+document.getElementById("projs").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-cwd]");
+  if(b){ setGridProj(b.dataset.cwd || null); tick(); }
+});
+
+// Repaints the picker and returns what the grid is to show. A stored project can be gone
+// by the time it is read back - that session ended - so the choice is corrected here.
+function projTabs(sessions){
+  const by = new Map();
+  for(const s of sessions){
+    const e = by.get(s.cwd) || {cwd: s.cwd, name: s.project, n: 0};
+    e.n++;
+    by.set(s.cwd, e);
+  }
+  if(gridProj && !by.has(gridProj)) setGridProj(null);  // that session ended
+  const el = document.getElementById("projs");
+  el.hidden = view !== "sessions" || by.size < 2;  // a single project is not a choice
+  if(!el.hidden){
+    const tab = (cwd, name, n, title) => `<button class="tab${(cwd || null) === gridProj ? " on" : ""}"` +
+      ` data-cwd="${esc(cwd)}" title="${esc(title)}">${esc(name)} &middot; ${n}</button>`;
+    el.innerHTML = tab("", "all", sessions.length, "every running session")
+      + [...by.values()].sort((a, b) => a.name.localeCompare(b.name) || a.cwd.localeCompare(b.cwd))
+          .map(p => tab(p.cwd, p.name, p.n, p.cwd)).join("");
+  }
+  return gridProj ? sessions.filter(s => s.cwd === gridProj) : sessions;
+}
+
+// The same numbers the server puts in `totals`, over whatever the grid shows - a header
+// counting sessions that are filtered out would not match the cards below it.
+const TOK = ["output", "input", "cache_read", "cache_write", "thinking"];
+function sums(list){
+  const t = {sessions: list.length, waiting: 0, busy: 0, subagents: 0, turns: 0, context: 0};
+  for(const k of TOK) t[k] = 0;
+  for(const s of list){
+    if(s.attention) t.waiting++;
+    if(s.status === "busy") t.busy++;
+    t.subagents += s.subagents.length;
+    t.turns += s.turns;
+    t.context += s.context;
+    for(const k of TOK) t[k] += s.tokens[k];
+  }
+  return t;
+}
+
 // which view is painted; the sessions grid and the backlog never show at once - with
 // eight sessions the board would be a scroll away, which is not a board
 let view = load("view", "sessions");
@@ -1169,6 +1221,7 @@ function setView(v){
   // only the view tabs - the board's project picker shares the class and would lose its
   // own `on` until the next repaint three seconds later
   document.querySelectorAll(".tab[data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  document.getElementById("projs").hidden = v !== "sessions";
   document.getElementById("kpis").hidden = v !== "sessions";
   document.getElementById("grid").hidden = v !== "sessions";
   document.getElementById("backlog").hidden = v !== "backlog";
@@ -1193,7 +1246,8 @@ async function tick(){
   try {
     if(view === "backlog"){ await tickBacklog(); return; }
     const d = await (await fetch("/api/state")).json();
-    const T = d.totals, now = d.now;
+    const shown = projTabs(d.sessions);
+    const T = sums(shown), now = d.now;
     const U = d.usage;
     stamp();
     document.getElementById("kpis").innerHTML =
@@ -1212,8 +1266,11 @@ async function tick(){
       + (U ? kpi(esc(U.plan), "plan", "more-only") : "")
       + `<button class="more" onclick="toggleKpis()"><i>\u2192</i><span>show more</span></button>`;
     paintKpiFold();
-    document.getElementById("grid").innerHTML = d.sessions.map(s => card(s, now)).join("");
-    document.title = (T.waiting ? `(${T.waiting}) ` : "") + "Claude agents";
+    document.getElementById("grid").innerHTML = shown.map(s => card(s, now)).join("");
+    // the title counts every session on purpose: a filtered grid must not hide that a
+    // session in another project is waiting on the user
+    const W = d.totals.waiting;
+    document.title = (W ? `(${W}) ` : "") + "Claude agents";
   } catch (e) {
     document.getElementById("sub").textContent = "connection to the server failed: " + e;
   }
